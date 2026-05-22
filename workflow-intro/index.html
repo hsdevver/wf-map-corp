@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" data-skin="corporate" data-appearance="dark" data-corporate-appearance="image" data-module-layout="clean">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workflow map — Corporate</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/cheat-panel.css?v=corp-9" />
+    <link rel="stylesheet" href="../css/workflow-intro.css" />
+    <link rel="stylesheet" href="../css/workflow-intro-corporate.css" />
+    <link rel="stylesheet" href="../css/module-modal.css" />
+    <link rel="stylesheet" href="../css/module-modal-corporate.css" />
+    <link rel="stylesheet" href="../css/module-folder-bento.css" />
+    <style>
+      html[data-skin='corporate'][data-corporate-appearance='image'] {
+        --corporate-hero-photo: url('../assets/corporate-hero-office.jpg');
+      }
+    </style>
+  </head>
+  <body class="workflow-intro">
+    <div class="intro-page">
+      <div class="intro-viewport" id="viewport">
+        <div class="intro-stage" id="stage">
+          <div class="intro-rail" id="rail">
+            <section
+              class="intro-beat intro-beat--chapter"
+              data-chapter="1"
+              aria-label="Volume 1"
+            >
+              <div class="intro-corporate-board" id="intro-corporate-board">
+                <div class="intro-corporate-board__backdrop" aria-hidden="true"></div>
+                <header class="intro-corporate-board__hero">
+                  <nav class="intro-corporate-nav" aria-label="Volumes">
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-active"
+                      data-volume="1"
+                      aria-current="page"
+                    >
+                      Volume 1
+                    </button>
+                    <span class="intro-corporate-nav__connector" aria-hidden="true"></span>
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-locked"
+                      data-volume="2"
+                      disabled
+                      aria-label="Volume 2 (locked)"
+                    >
+                      <span class="intro-corporate-nav__lock" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            d="M8 11V8a4 4 0 0 1 8 0v3"
+                          />
+                          <rect fill="currentColor" x="5" y="11" width="14" height="9" rx="2" />
+                        </svg>
+                      </span>
+                      Volume 2
+                    </button>
+                    <span class="intro-corporate-nav__connector" aria-hidden="true"></span>
+                    <button
+                      type="button"
+                      class="intro-corporate-nav__item is-locked"
+                      data-volume="3"
+                      disabled
+                      aria-label="Volume 3 (locked)"
+                    >
+                      <span class="intro-corporate-nav__lock" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            d="M8 11V8a4 4 0 0 1 8 0v3"
+                          />
+                          <rect fill="currentColor" x="5" y="11" width="14" height="9" rx="2" />
+                        </svg>
+                      </span>
+                      Volume 3
+                    </button>
+                  </nav>
+                </header>
+
+                <div class="intro-corporate-board__body">
+                  <div class="intro-corporate-board__main">
+                    <div class="intro-corporate-board__copy">
+                      <h2 class="intro-corporate-board__title">Volume 1: Getting started</h2>
+                      <p class="intro-corporate-board__lead">
+                        Your walk-through for this volume—what each module is for, how they connect, and what to
+                        try first. Same energy as the laminated sheet by the copier: read once, then you’re set.
+                      </p>
+                    </div>
+
+                    <div class="intro-modules intro-corporate-board__path" id="modules" role="list">
+                      <div class="intro-path-map" id="intro-path-map">
+                        <svg class="intro-connectors" id="intro-connectors" aria-hidden="true"></svg>
+                        <div class="intro-path-grid" id="intro-columns"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="intro-corporate-leaderboard-panel">
+                    <div class="intro-corporate-leaderboard-column">
+                      <section
+                        class="intro-corporate-player-profile"
+                        id="intro-corporate-player-profile"
+                        aria-label="Your profile and coaching feedback"
+                      >
+                        <div class="intro-corporate-player-profile__identity">
+                          <h3 class="intro-corporate-player-profile__name" data-player-name>You</h3>
+                          <div class="intro-corporate-player-profile__stats">
+                            <div class="intro-corporate-player-profile__stat">
+                              <span class="intro-corporate-player-profile__stat-label">Score</span>
+                              <span class="intro-corporate-player-profile__stat-value" data-player-score>2,480</span>
+                            </div>
+                            <div class="intro-corporate-player-profile__stat">
+                              <span class="intro-corporate-player-profile__stat-label">Stars</span>
+                              <span class="intro-corporate-player-profile__stat-value" data-player-stars>0</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="intro-corporate-player-profile__skills" aria-label="Skill breakdown">
+                          <div class="intro-corporate-skill" data-skill="empathy">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Empathy</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="empathy">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div class="intro-corporate-skill__fill" data-skill-fill="empathy"></div>
+                            </div>
+                          </div>
+                          <div class="intro-corporate-skill" data-skill="ownership">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Ownership</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="ownership">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div class="intro-corporate-skill__fill" data-skill-fill="ownership"></div>
+                            </div>
+                          </div>
+                          <div class="intro-corporate-skill" data-skill="communication">
+                            <div class="intro-corporate-skill__head">
+                              <span class="intro-corporate-skill__label">Communication</span>
+                              <span class="intro-corporate-skill__pct" data-skill-pct="communication">—</span>
+                            </div>
+                            <div class="intro-corporate-skill__track" aria-hidden="true">
+                              <div
+                                class="intro-corporate-skill__fill"
+                                data-skill-fill="communication"
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          class="intro-corporate-player-profile__feedback intro-corporate-feedback"
+                          id="intro-corporate-feedback"
+                        >
+                          <div class="intro-corporate-feedback__head">
+                            <span class="intro-corporate-feedback__label">Feedback</span>
+                          </div>
+                          <p class="intro-corporate-feedback__focus" data-feedback-focus>
+                            Play your first scored module to unlock an AI summary of your latest coaching notes here.
+                          </p>
+                          <p class="intro-corporate-feedback__strength">
+                            <span class="intro-corporate-feedback__strength-label">Keep up</span>
+                            <span data-feedback-strength>Showing up on the path counts—finish a module to see your edge.</span>
+                          </p>
+                        </div>
+                      </section>
+
+                      <aside
+                        class="intro-corporate-activity"
+                        id="intro-corporate-activity"
+                        aria-label="Your recent moves"
+                      >
+                        <div class="intro-corporate-activity__head">
+                          <span class="intro-corporate-activity__label">Activity</span>
+                          <span class="intro-corporate-activity__hint">Recent</span>
+                        </div>
+                        <div class="intro-corporate-activity__viewport">
+                          <ol class="intro-corporate-activity__list" id="intro-activity-log-list"></ol>
+                        </div>
+                      </aside>
+
+                      <aside
+                        class="intro-corporate-leaderboard intro-corporate-leaderboard--scope-inline"
+                        id="intro-corporate-leaderboard"
+                        aria-label="Department leaderboard"
+                        data-leaderboard-scope="department"
+                      >
+                        <div
+                          class="intro-corporate-leaderboard__body-sheet"
+                          id="intro-corporate-leaderboard-panel"
+                          role="tabpanel"
+                          aria-labelledby="intro-corporate-leaderboard-tab-department"
+                        >
+                          <div class="intro-corporate-leaderboard__sheet-head">
+                            <span class="intro-corporate-leaderboard__label">Leaderboard</span>
+                            <div
+                              class="intro-corporate-leaderboard-scopes"
+                              role="tablist"
+                              aria-label="Leaderboard scope"
+                            >
+                              <button
+                                type="button"
+                                class="intro-corporate-leaderboard-scope is-active"
+                                data-scope="department"
+                                role="tab"
+                                id="intro-corporate-leaderboard-tab-department"
+                                aria-selected="true"
+                                aria-controls="intro-corporate-leaderboard-panel"
+                              >
+                                Department
+                              </button>
+                              <button
+                                type="button"
+                                class="intro-corporate-leaderboard-scope"
+                                data-scope="company"
+                                role="tab"
+                                id="intro-corporate-leaderboard-tab-company"
+                                aria-selected="false"
+                                aria-controls="intro-corporate-leaderboard-panel"
+                              >
+                                Company
+                              </button>
+                            </div>
+                          </div>
+                    <div class="intro-corporate-leaderboard__list-wrap">
+                      <div
+                        class="intro-corporate-leaderboard__list-fade intro-corporate-leaderboard__list-fade--top"
+                        aria-hidden="true"
+                      >
+                        <span class="intro-corporate-leaderboard__ellipsis">···</span>
+                      </div>
+                      <div class="intro-corporate-leaderboard__viewport">
+                        <ol class="intro-corporate-leaderboard__list">
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--peek" aria-hidden="true">
+                        <span class="intro-corporate-leaderboard__rank">2</span>
+                        <span class="intro-corporate-leaderboard__name">Jamie Kim</span>
+                        <span class="intro-corporate-leaderboard__pts">2,920</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">3</span>
+                        <span class="intro-corporate-leaderboard__name">Elena Voss</span>
+                        <span class="intro-corporate-leaderboard__pts">2,840</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">4</span>
+                        <span class="intro-corporate-leaderboard__name">Marcus Chen</span>
+                        <span class="intro-corporate-leaderboard__pts">2,710</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">5</span>
+                        <span class="intro-corporate-leaderboard__name">Priya Nair</span>
+                        <span class="intro-corporate-leaderboard__pts">2,590</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--you">
+                        <span class="intro-corporate-leaderboard__rank">6</span>
+                        <span class="intro-corporate-leaderboard__name">You</span>
+                        <span class="intro-corporate-leaderboard__pts">2,480</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">7</span>
+                        <span class="intro-corporate-leaderboard__name">Jonas Lind</span>
+                        <span class="intro-corporate-leaderboard__pts">2,350</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row">
+                        <span class="intro-corporate-leaderboard__rank">8</span>
+                        <span class="intro-corporate-leaderboard__name">Sofia Ruiz</span>
+                        <span class="intro-corporate-leaderboard__pts">2,210</span>
+                      </li>
+                      <li class="intro-corporate-leaderboard__row intro-corporate-leaderboard__row--peek" aria-hidden="true">
+                        <span class="intro-corporate-leaderboard__rank">9</span>
+                        <span class="intro-corporate-leaderboard__name">Alex Morgan</span>
+                        <span class="intro-corporate-leaderboard__pts">2,095</span>
+                      </li>
+                        </ol>
+                      </div>
+                      <div
+                        class="intro-corporate-leaderboard__list-fade intro-corporate-leaderboard__list-fade--bottom"
+                        aria-hidden="true"
+                      >
+                        <span class="intro-corporate-leaderboard__ellipsis">···</span>
+                      </div>
+                    </div>
+                    <p class="intro-corporate-leaderboard__more" data-leaderboard-more>287 players below</p>
+                        </div>
+                      </aside>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <h2 class="intro-chapter">Volume 1: Getting started</h2>
+            </section>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="ambient" class="intro-ambient" aria-hidden="true"></div>
+
+    <script>
+      (function () {
+        function purgeStaleCheatPanel() {
+          var panel = document.getElementById('wf-cheat-panel');
+          if (panel && !panel.querySelector('[data-skin]')) panel.remove();
+        }
+        purgeStaleCheatPanel();
+        window.addEventListener('pageshow', function (e) {
+          if (e.persisted) purgeStaleCheatPanel();
+        });
+      })();
+    </script>
+    <script src="../js/workflow-intro.js?v=lb-stream-v1" type="module"></script>
+  </body>
+</html>
