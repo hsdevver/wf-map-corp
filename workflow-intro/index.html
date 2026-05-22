@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="../css/theme.css" />
     <link rel="stylesheet" href="../css/cheat-panel.css?v=corp-9" />
     <link rel="stylesheet" href="../css/workflow-intro.css" />
-    <link rel="stylesheet" href="../css/workflow-intro-corporate.css" />
+    <link rel="stylesheet" href="../css/workflow-intro-corporate.css?v=corp-lb-you-rank-v1" />
     <link rel="stylesheet" href="../css/module-modal.css" />
     <link rel="stylesheet" href="../css/module-modal-corporate.css" />
     <link rel="stylesheet" href="../css/module-folder-bento.css" />
@@ -194,38 +194,70 @@
                         <div
                           class="intro-corporate-leaderboard__body-sheet"
                           id="intro-corporate-leaderboard-panel"
-                          role="tabpanel"
-                          aria-labelledby="intro-corporate-leaderboard-tab-department"
+                          role="region"
+                          aria-labelledby="intro-corporate-leaderboard-scope-trigger"
                         >
                           <div class="intro-corporate-leaderboard__sheet-head">
                             <span class="intro-corporate-leaderboard__label">Leaderboard</span>
-                            <div
-                              class="intro-corporate-leaderboard-scopes"
-                              role="tablist"
-                              aria-label="Leaderboard scope"
-                            >
+                            <div class="intro-corporate-leaderboard-scopes" data-leaderboard-scope-dropdown>
                               <button
                                 type="button"
-                                class="intro-corporate-leaderboard-scope is-active"
-                                data-scope="department"
-                                role="tab"
-                                id="intro-corporate-leaderboard-tab-department"
-                                aria-selected="true"
-                                aria-controls="intro-corporate-leaderboard-panel"
+                                class="intro-corporate-leaderboard-scope-trigger"
+                                id="intro-corporate-leaderboard-scope-trigger"
+                                aria-haspopup="listbox"
+                                aria-expanded="false"
+                                aria-controls="intro-corporate-leaderboard-scope-menu"
                               >
-                                Department
+                                <span
+                                  class="intro-corporate-leaderboard-scope-trigger__label"
+                                  data-leaderboard-scope-label
+                                >
+                                  Department
+                                </span>
+                                <svg
+                                  class="intro-corporate-leaderboard-scope-trigger__chevron"
+                                  width="10"
+                                  height="10"
+                                  viewBox="0 0 10 10"
+                                  aria-hidden="true"
+                                  focusable="false"
+                                >
+                                  <path
+                                    d="M2 3.5 5 6.5 8 3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.35"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                  />
+                                </svg>
                               </button>
-                              <button
-                                type="button"
-                                class="intro-corporate-leaderboard-scope"
-                                data-scope="company"
-                                role="tab"
-                                id="intro-corporate-leaderboard-tab-company"
-                                aria-selected="false"
-                                aria-controls="intro-corporate-leaderboard-panel"
+                              <ul
+                                id="intro-corporate-leaderboard-scope-menu"
+                                class="intro-corporate-leaderboard-scope-menu"
+                                role="listbox"
+                                aria-label="Leaderboard scope"
+                                hidden
                               >
-                                Company
-                              </button>
+                                <li
+                                  role="option"
+                                  class="intro-corporate-leaderboard-scope-option is-active"
+                                  data-scope="department"
+                                  id="intro-corporate-leaderboard-scope-department"
+                                  aria-selected="true"
+                                >
+                                  Department
+                                </li>
+                                <li
+                                  role="option"
+                                  class="intro-corporate-leaderboard-scope-option"
+                                  data-scope="company"
+                                  id="intro-corporate-leaderboard-scope-company"
+                                  aria-selected="false"
+                                >
+                                  Company
+                                </li>
+                              </ul>
                             </div>
                           </div>
                     <div class="intro-corporate-leaderboard__list-wrap">
@@ -304,18 +336,6 @@
 
     <div id="ambient" class="intro-ambient" aria-hidden="true"></div>
 
-    <script>
-      (function () {
-        function purgeStaleCheatPanel() {
-          var panel = document.getElementById('wf-cheat-panel');
-          if (panel && !panel.querySelector('[data-skin]')) panel.remove();
-        }
-        purgeStaleCheatPanel();
-        window.addEventListener('pageshow', function (e) {
-          if (e.persisted) purgeStaleCheatPanel();
-        });
-      })();
-    </script>
-    <script src="../js/workflow-intro.js?v=lb-tape-buffer-v1" type="module"></script>
+    <script src="../js/workflow-intro.js?v=corp-path-grid-flex-v3" type="module"></script>
   </body>
 </html>

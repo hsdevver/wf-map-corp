@@ -2,6 +2,13 @@
  * Cheat-panel layout visibility — mirrors corporate board regions.
  */
 
+import {
+  PATH_GRID_LAYOUT_MODES,
+  applyPathGridLayoutMode,
+  getPathGridLayoutMode,
+  setPathGridLayoutMode
+} from './path-grid-layout.js';
+
 const STORAGE_KEY = 'wf-cheat-layout-v3';
 const THUMB_STYLE_KEY = 'wf-cheat-chapter-thumb-v1';
 const PATH_HIGHLIGHT_KEY = 'wf-cheat-path-highlight-v2';
@@ -98,6 +105,18 @@ export function toggleLayoutRegion(id) {
   const state = getLayoutVisibility();
   state[id] = !state[id];
   return setLayoutVisibility(state);
+}
+
+/** Force dashboard path + main column visible (fixes stale layout-cheat session hiding #modules). */
+export function resetCorporateDashboardLayout() {
+  const next = { ...DEFAULT_LAYOUT };
+  next.hero = true;
+  next.sidebar = true;
+  next.main = true;
+  next.copy = true;
+  next.lead = true;
+  next.path = true;
+  return setLayoutVisibility(next);
 }
 
 function remeasureSideProfile() {
@@ -202,6 +221,14 @@ export function buildLayoutSkeletonHtml() {
         ).join('')}
       </div>
       <p class="cheat-panel__sound-note">Local hover: scrub taken routes into a chapter (no locked stops). Recent path: on chapter hover, only your latest taken route there. All opened: on chapter hover, every taken route into that chapter.</p>
+      <span class="cheat-panel__label" id="cheat-path-grid-layout-label">Path grid</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Chapter path grid rows">
+        ${PATH_GRID_LAYOUT_MODES.map(
+          (mode) =>
+            `<button type="button" class="cheat-panel__seg-btn" data-path-grid-layout="${mode.id}">${mode.label}</button>`
+        ).join('')}
+      </div>
+      <p class="cheat-panel__sound-note">Strict: A top, B on the center spine (aligned with chapters 1–2–4–5), C bottom. Flex: when a column has no C lane, A moves up and B moves down.</p>
     </section>`;
 }
 
@@ -228,6 +255,7 @@ export function syncLayoutSkeletonUi(panel) {
 
   syncChapterThumbUi(panel);
   syncPathHighlightUi(panel);
+  syncPathGridLayoutUi(panel);
 }
 
 /** @param {HTMLElement} panel */
@@ -253,6 +281,13 @@ export function wireLayoutCheat(panel) {
   panel.querySelectorAll('[data-path-highlight]').forEach((btn) => {
     btn.addEventListener('click', () => {
       setPathHighlightMode(/** @type {PathHighlightMode} */ (btn.dataset.pathHighlight));
+      syncLayoutSkeletonUi(panel);
+    });
+  });
+
+  panel.querySelectorAll('[data-path-grid-layout]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setPathGridLayoutMode(/** @type {'flex' | 'strict'} */ (btn.dataset.pathGridLayout));
       syncLayoutSkeletonUi(panel);
     });
   });
@@ -328,8 +363,21 @@ export function syncPathHighlightUi(panel) {
   });
 }
 
+/** @param {HTMLElement} panel */
+export function syncPathGridLayoutUi(panel) {
+  const mode = getPathGridLayoutMode();
+  panel.querySelectorAll('[data-path-grid-layout]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.pathGridLayout === mode);
+  });
+}
+
 export function initLayoutCheat() {
-  applyLayoutVisibility();
+  if (/\/workflow-intro\//.test(window.location.pathname)) {
+    resetCorporateDashboardLayout();
+  } else {
+    applyLayoutVisibility();
+  }
   applyChapterThumbStyle();
   applyPathHighlightMode();
+  applyPathGridLayoutMode();
 }

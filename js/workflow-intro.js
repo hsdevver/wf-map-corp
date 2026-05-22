@@ -1,12 +1,11 @@
-import { wireSecretChapterTrigger } from './cheat-panel.js';
-import { getPathHighlightMode } from './layout-cheat.js';
+import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js';
+import { getPathHighlightMode, resetCorporateDashboardLayout } from './layout-cheat.js';
 import {
   getRecentActivityModuleIds,
   initIntroActivityLog,
   recordPlayActivity,
   syncIntroSideColumnLayout
 } from './intro-activity-log.js';
-import { initTheme } from './theme.js';
 import { initAmbientMusicSync, initAmbientPlayback } from './ambient-music.js?v=music-tracks-v1';
 import {
   anchorFromRect,
@@ -164,8 +163,8 @@ function volume3GraphIsLegacy(modules = getRuntimeModules()) {
   return modules.length < 12;
 }
 
-/** Rebuild the grid when catalog chapter and rendered modules diverge (cheat / volume nav). */
-function syncCorporatePathMapToCatalog() {
+/** Align catalog chapter with the viewed volume before rendering (never call renderModules from here). */
+function prepareCatalogForRender() {
   if (!isCorporateSkin() || !gridEl) return;
 
   const vol = getCorporateViewVolume();
@@ -179,9 +178,6 @@ function syncCorporatePathMapToCatalog() {
       `[wf-map] Rebuilding volume 1 path map (${FLOW_GRAPH_BUILD}) — restoring classic graph`
     );
     setCatalogChapter(1);
-    renderModules();
-    applyCorporateModuleGridLayout();
-    queueIntroCordLayout();
     return;
   }
 
@@ -190,23 +186,27 @@ function syncCorporatePathMapToCatalog() {
       `[wf-map] Rebuilding volume 3 path map (${FLOW_GRAPH_BUILD}) — stale graph was cached`
     );
     setCatalogChapter(3);
-    renderModules();
-    applyCorporateModuleGridLayout();
-    queueIntroCordLayout();
     return;
   }
 
-  if (pathMapMatchesCatalog()) return;
-  if (usesIntroSidePanel()) setCatalogChapter(vol);
-  renderModules();
+  if (!pathMapMatchesCatalog() && usesIntroSidePanel()) {
+    setCatalogChapter(vol);
+  }
+}
+
+/** After render: re-sync if DOM still does not match catalog. */
+function syncCorporatePathMapToCatalog() {
+  if (!isCorporateSkin() || !gridEl) return;
+  prepareCatalogForRender();
+  if (!pathMapMatchesCatalog()) {
+    renderModules();
+  }
 }
 
 /** Place each module on its graph row/column so forks align across the grid (reference layout). */
-function applyCorporateModuleGridLayout() {
+function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
   if ((!isCorporateSkin() && !isSpaceSkin()) || !gridEl) return;
-
-  syncCorporatePathMapToCatalog();
-  if (!pathMapMatchesCatalog()) return;
+  if (!gridEl.querySelector('.intro-module-wrap')) return;
 
   dissolveCorporatePathStacks();
 
@@ -235,6 +235,7 @@ function applyCorporateModuleGridLayout() {
     wrap.classList.add('intro-module-wrap--solo');
     wrap.style.gridColumn = String(mod.column);
     wrap.style.gridRow = String(mod.row);
+    wrap.dataset.pathRow = String(mod.row);
   });
 
   const rowSpread =
@@ -263,8 +264,9 @@ function applyCorporateModuleGridLayout() {
   if (isCorporateSkin()) syncCorporatePathViewport();
 }
 
-const PATH_CARD_MAX_PX = 197;
-const PATH_CARD_MIN_PX = 80;
+/** Soft ceiling only — dashboard cards scale with viewport below this. */
+const PATH_CARD_MAX_PX = 360;
+const PATH_CARD_MIN_PX = 72;
 const PATH_FOCUS_COLUMN_COUNT = 5;
 const PATH_LATE_FOCUS_START_COL = 3;
 const PATH_COLUMN_AFTER_CH3 = 4;
@@ -350,10 +352,11 @@ function measurePathVisibleWidth(modulesEl, gridPadX) {
 
 function measurePathLayoutBox() {
   const modulesEl = document.getElementById('modules');
-  if (!modulesEl || !pathMapEl || !gridEl || modulesEl.offsetParent === null) return null;
+  if (!modulesEl || !pathMapEl || !gridEl) return null;
 
-  const modulesH = modulesEl.clientHeight;
-  if (modulesH < 48) return null;
+  const modulesRect = modulesEl.getBoundingClientRect();
+  const modulesH = modulesEl.clientHeight || modulesRect.height;
+  if (modulesH < 48 && modulesRect.width < 48) return null;
 
   const pathStyle = getComputedStyle(pathMapEl);
   const pathPadY = parseFloat(pathStyle.paddingTop) + parseFloat(pathStyle.paddingBottom);
@@ -378,11 +381,24 @@ function measurePathLayoutBox() {
   };
 }
 
-function computePathCardSize(box, columnBudget) {
-  const cardFromWidth = (box.availW - (columnBudget - 1) * box.colGap) / columnBudget;
+/** Columns used to size cards in the path lane (not always the rendered module count). */
+function pathDashboardColumnBudget(box) {
+  if (!box) return PATH_FOCUS_COLUMN_COUNT;
+  /* Linear vol. paths with fewer than five modules still size cards for a five-column lane. */
+  if (box.isLinear && (isCorporateSkin() || isSpaceSkin())) {
+    return Math.max(box.maxCol, PATH_FOCUS_COLUMN_COUNT);
+  }
+  if (box.isLinear) return box.maxCol;
+  return Math.min(PATH_FOCUS_COLUMN_COUNT, box.maxCol);
+}
+
+function computePathCardSize(box, columnBudget = pathDashboardColumnBudget(box)) {
+  const budget = Math.max(1, columnBudget);
+  const cardFromWidth = (box.availW - (budget - 1) * box.colGap) / budget;
   const cardFromHeight = (box.availH - (box.maxRow - 1) * box.rowGap) / box.maxRow;
-  let cardSize = Math.min(PATH_CARD_MAX_PX, cardFromWidth);
+  let cardSize = cardFromWidth;
   if (!box.isLinear) cardSize = Math.min(cardSize, cardFromHeight);
+  cardSize = Math.min(cardSize, PATH_CARD_MAX_PX);
   return Math.max(PATH_CARD_MIN_PX, Math.floor(cardSize));
 }
 
@@ -502,8 +518,9 @@ function setPathMapStageTransform(translateX) {
 
 function computePathZoomPanX(box, bounds, zoomT, cardSize) {
   const window = getPathFocusColumnWindow(box);
+  const panOverview = computePathGridCenterPan(box, cardSize);
   const panFocus = computePathFocusPanX(box, cardSize, window.startCol, window.endCol);
-  return lerp(bounds.panOverview, panFocus, zoomT);
+  return lerp(panOverview, panFocus, zoomT);
 }
 
 function pathCanManualPan() {
@@ -684,14 +701,14 @@ function ensurePathZoomControls() {
   btnOut.type = 'button';
   btnOut.className = 'intro-path-zoom-btn intro-path-zoom-btn--out';
   btnOut.dataset.pathZoom = 'out';
-  btnOut.setAttribute('aria-label', 'Zoom out');
+  btnOut.setAttribute('aria-label', 'Zoom out — show all chapter columns');
   btnOut.textContent = '−';
 
   const btnIn = document.createElement('button');
   btnIn.type = 'button';
   btnIn.className = 'intro-path-zoom-btn intro-path-zoom-btn--in';
   btnIn.dataset.pathZoom = 'in';
-  btnIn.setAttribute('aria-label', 'Zoom in');
+  btnIn.setAttribute('aria-label', 'Zoom in — focus five chapter columns');
   btnIn.textContent = '+';
 
   controls.append(btnOut, btnIn);
@@ -753,7 +770,7 @@ function resetPathColumnReveal() {
   updatePathZoomControls();
 }
 
-/** Wide volumes — min/max zoom snaps (all columns vs five-column focus window). */
+/** Wide volumes — zoom scales cards; zoom out fits all columns, zoom in fits five. */
 function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
   if (!box || box.maxCol <= PATH_FOCUS_COLUMN_COUNT) {
     pathRevealBounds = null;
@@ -762,12 +779,11 @@ function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
   const overviewSize = computePathCardSize(box, box.maxCol);
   const focusSize = computePathCardSize(box, PATH_FOCUS_COLUMN_COUNT);
   const window = getPathFocusColumnWindow(box, modules);
-  const panFocus = computePathFocusPanX(box, focusSize, window.startCol, window.endCol);
   pathRevealBounds = {
     overviewSize,
     focusSize,
     panOverview: computePathGridCenterPan(box, overviewSize),
-    panFocus,
+    panFocus: computePathFocusPanX(box, focusSize, window.startCol, window.endCol),
     panFocusEarly: computePathFocusPanX(box, focusSize, 1, PATH_FOCUS_COLUMN_COUNT),
     panFocusLate: computePathFocusPanX(
       box,
@@ -986,6 +1002,33 @@ async function runPathColumnFocusReveal(runId) {
   queueIntroCordLayout();
 }
 
+/** Minimum card/grid sizing when the path lane has not been measured yet (hidden main column, etc.). */
+function applyCorporatePathFallbackSizing() {
+  if (!isCorporateSkin() || !gridEl || !pathMapEl) return;
+
+  const modules = getRuntimeModules();
+  if (!modules.length) return;
+
+  const maxRow = Math.max(1, ...modules.map((m) => m.row));
+  const maxCol = Math.max(1, ...modules.map((m) => m.column));
+  const colGap = 16;
+  const rowGap = 16;
+  const cardSize = 160;
+  const gridH = maxRow * cardSize + (maxRow - 1) * rowGap;
+  const gridW = maxCol * cardSize + (maxCol - 1) * colGap;
+
+  gridEl.style.setProperty('--path-card-size', `${cardSize}px`);
+  gridEl.style.setProperty('--path-grid-cols', String(maxCol));
+  gridEl.style.gridTemplateColumns = `repeat(${maxCol}, ${cardSize}px)`;
+  gridEl.style.gridTemplateRows = `repeat(${maxRow}, ${cardSize}px)`;
+  gridEl.style.height = `${gridH}px`;
+  gridEl.style.minHeight = `${gridH}px`;
+  gridEl.style.width = `${gridW}px`;
+  gridEl.style.minWidth = `${gridW}px`;
+  pathMapEl.style.setProperty('--path-viewport-height', `${Math.max(gridH, 200)}px`);
+  setPathMapStageTransform(0);
+}
+
 /** Fit #intro-columns to remaining main-column height; scale chapter cards to match. */
 function syncCorporatePathViewport() {
   if (!isCorporateSkin() || !gridEl || !pathMapEl) return;
@@ -993,16 +1036,23 @@ function syncCorporatePathViewport() {
   ensurePathZoomControls();
   ensurePathMapStage();
   const box = measurePathLayoutBox();
-  if (!box) return;
+  if (!box) {
+    applyCorporatePathFallbackSizing();
+    return;
+  }
 
   const needsReveal = pathNeedsColumnReveal();
   if (!needsReveal) {
     resetPathColumnReveal();
-    const cardSize = computePathCardSize(box, box.maxCol);
+    const cardSize = computePathCardSize(box, pathDashboardColumnBudget(box));
     applyPathGridCardSize(box, cardSize);
-    const centerPan = computePathGridCenterPan(box, cardSize);
-    pathStagePanX = centerPan;
-    setPathMapStageTransform(centerPan);
+    const window = getPathFocusColumnWindow(box);
+    const panX =
+      box.maxCol <= PATH_FOCUS_COLUMN_COUNT
+        ? computePathGridCenterPan(box, cardSize)
+        : computePathFocusPanX(box, cardSize, window.startCol, window.endCol);
+    pathStagePanX = panX;
+    setPathMapStageTransform(panX);
     return;
   }
 
@@ -1148,7 +1198,13 @@ let corporatePopRun = 0;
 
 const CORPORATE_POP = {
   stepMs: 420,
-  moduleStaggerMs: 140
+  navStaggerMs: 110,
+  copyStaggerMs: 200,
+  moduleStaggerMs: 150,
+  cordGrowMs: 560,
+  sideStaggerMs: 170,
+  lbRowStaggerMs: 32,
+  lbRowCap: 10
 };
 
 const CORPORATE_VOLUME_COPY = {
@@ -2230,8 +2286,11 @@ function patchModulesFromRuntime(unlockedIds = []) {
   syncNextPlayModuleGlow();
 }
 
-function renderModules() {
+function renderModules({ _retry = 0 } = {}) {
   if (!gridEl) return;
+
+  prepareCatalogForRender();
+
   gridEl.innerHTML = '';
 
   getRuntimeModules().forEach((mod, index) => {
@@ -2241,6 +2300,7 @@ function renderModules() {
     wrap.dataset.pathColumn = String(mod.column);
     wrap.style.gridColumn = String(mod.column);
     wrap.style.gridRow = String(mod.row);
+    wrap.dataset.pathRow = String(mod.row);
     wrap.style.setProperty('--reveal-index', String(index));
     applyModuleScatter(wrap, mod.id);
     if (mod.start) wrap.classList.add('intro-module-wrap--start');
@@ -2321,18 +2381,37 @@ function renderModules() {
   if (usesIntroSidePanel()) syncPlayerProfile();
 
   if (isCorporateSkin()) {
-    applyCorporateModuleGridLayout();
+    const board = document.getElementById('intro-corporate-board');
+    resetCorporateDashboardLayout();
+    applyCorporateModuleGridLayout({ skipCatalogSync: true });
     tagCorporatePopTargets();
     wireLeaderboardScopes();
     gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-      wrap.classList.add('is-revealed');
+      wrap.classList.add('is-revealed', 'is-pop-visible');
     });
+    viewport?.classList.add('is-modules-visible', 'is-chapter-settled', 'is-corporate-board');
+    board?.classList.remove('is-pop-pending', 'is-path-pop-active');
+    board?.classList.add('is-pop-complete');
+    introState.complete = true;
+    introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
+    introState.progress = 1;
+    syncCorporatePathViewport();
   } else if (isSpaceSkin()) {
-    applyCorporateModuleGridLayout();
+    applyCorporateModuleGridLayout({ skipCatalogSync: true });
   }
 
   syncNextPlayModuleGlow();
   queueIntroCordLayout();
+
+  if (
+    _retry < 2 &&
+    (isCorporateSkin() || isSpaceSkin()) &&
+    !pathMapMatchesCatalog()
+  ) {
+    console.warn('[wf-map] path grid still mismatched catalog after render — retrying');
+    prepareCatalogForRender();
+    renderModules({ _retry: _retry + 1 });
+  }
 }
 
 function delayMs(ms) {
@@ -2522,7 +2601,11 @@ function leaderboardSwooshTravelPx(fromRank, toRank, rowStep) {
 }
 
 function leaderboardTapeRowPool(listEl) {
-  const rows = [...listEl.querySelectorAll('.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--tape)')];
+  const rows = [
+    ...listEl.querySelectorAll(
+      '.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--tape):not(.intro-corporate-leaderboard__row--pad)'
+    )
+  ];
   const pool = rows.filter((r) => !r.classList.contains('intro-corporate-leaderboard__row--you'));
   return pool.length ? pool : rows;
 }
@@ -2560,6 +2643,72 @@ function installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, travelPx) {
 
 function removeLeaderboardTapeBuffers(listEl) {
   listEl?.querySelectorAll('.intro-corporate-leaderboard__row--tape').forEach((el) => el.remove());
+}
+
+function formatLeaderboardRank(rank) {
+  return Math.max(1, Math.round(rank)).toLocaleString('en-US');
+}
+
+function leaderboardRankOdometerMarkup(rank) {
+  const r = Math.max(1, Math.round(rank));
+  const cur = formatLeaderboardRank(r);
+  const cells = [r - 1, r, r + 1, r + 2]
+    .map((n) => Math.max(1, n))
+    .map(
+      (n) =>
+        `<span class="intro-corporate-leaderboard__rank-cell${
+          n === r ? ' is-current' : ''
+        }">${formatLeaderboardRank(n)}</span>`
+    )
+    .join('');
+  return `<span class="intro-corporate-leaderboard__rank intro-corporate-leaderboard__rank--odometer" aria-label="Rank ${cur}">
+    <span class="intro-corporate-leaderboard__rank-viewport">
+      <span class="intro-corporate-leaderboard__rank-strip" data-rank="${r}" style="transform: translateY(calc(-1 * var(--lb-rank-line)))">${cells}</span>
+    </span>
+  </span>`;
+}
+
+function mountLeaderboardRankOdometer(rowEl, rank) {
+  if (!rowEl) return;
+  const html = leaderboardRankOdometerMarkup(rank);
+  const odometer = rowEl.querySelector('.intro-corporate-leaderboard__rank--odometer');
+  if (odometer) odometer.outerHTML = html;
+  else {
+    const plain = rowEl.querySelector('.intro-corporate-leaderboard__rank');
+    if (plain) plain.outerHTML = html;
+  }
+}
+
+/** Timer-style rank scroll on the You row during scope swoosh (fractional 148 → 149 → …). */
+function updateLeaderboardYouRankOdometer(youRow, fromRank, toRank, progress) {
+  if (!youRow) return;
+  if (!youRow.querySelector('.intro-corporate-leaderboard__rank-strip')) {
+    mountLeaderboardRankOdometer(youRow, fromRank);
+  }
+  const strip = youRow.querySelector('.intro-corporate-leaderboard__rank-strip');
+  const odometer = youRow.querySelector('.intro-corporate-leaderboard__rank--odometer');
+  if (!strip || !odometer) return;
+
+  const mix = (fromRank ?? 0) + ((toRank ?? 0) - (fromRank ?? 0)) * progress;
+  const base = Math.floor(mix);
+  const frac = mix - base;
+  const slice = [0, 1, 2, 3].map((i) => Math.max(1, base - 1 + i));
+
+  strip.dataset.rank = String(base);
+  strip.style.transition = 'none';
+  if (strip.dataset.rankBase !== String(base)) {
+    strip.dataset.rankBase = String(base);
+    strip.innerHTML = slice
+      .map(
+        (n, i) =>
+          `<span class="intro-corporate-leaderboard__rank-cell${
+            i === 1 ? ' is-current' : ''
+          }">${formatLeaderboardRank(n)}</span>`
+      )
+      .join('');
+  }
+  strip.style.transform = `translateY(calc(-1 * var(--lb-rank-line) - ${frac} * var(--lb-rank-line)))`;
+  odometer.setAttribute('aria-label', `Rank ${formatLeaderboardRank(Math.round(mix))}`);
 }
 
 function cubicBezierEase(x1, y1, x2, y2, t) {
@@ -2626,8 +2775,11 @@ function applyLeaderboardRowEntry(li, entry, staggerIndex) {
   const ptsClass = entry.ptsTone
     ? ` intro-corporate-leaderboard__pts--${entry.ptsTone}`
     : '';
+  const rankHtml = entry.you
+    ? leaderboardRankOdometerMarkup(entry.rank)
+    : `<span class="intro-corporate-leaderboard__rank">${entry.rank}</span>`;
   li.innerHTML = `
-    <span class="intro-corporate-leaderboard__rank">${entry.rank}</span>
+    ${rankHtml}
     <span class="intro-corporate-leaderboard__name">${entry.name}</span>
     <span class="intro-corporate-leaderboard__pts${ptsClass}">${entry.pts}</span>
   `;
@@ -2792,9 +2944,9 @@ function expandLeaderboardRows(scopeData, rowSlots) {
     return rows;
   }
 
-  const surround = fullTarget - 1;
-  let rowsAbove = Math.min(playersAbove, Math.floor(surround / 2));
-  let rowsBelow = Math.min(playersBelow, Math.ceil(surround / 2));
+  const centerIdx = Math.floor((fullTarget - 1) / 2);
+  let rowsAbove = Math.min(playersAbove, centerIdx);
+  let rowsBelow = Math.min(playersBelow, fullTarget - 1 - centerIdx);
   while (rowsAbove + rowsBelow + 1 < fullTarget) {
     const canAddAbove = rowsAbove < playersAbove;
     const canAddBelow = rowsBelow < playersBelow;
@@ -2837,7 +2989,11 @@ function expandLeaderboardRows(scopeData, rowSlots) {
     });
   }
 
-  return rows;
+  const youIdx = rows.findIndex((row) => row.you);
+  const padBefore = Math.max(0, centerIdx - youIdx);
+  const padAfter = Math.max(0, fullTarget - rows.length - padBefore);
+  const padRow = () => ({ pad: true });
+  return [...Array(padBefore).fill(null).map(padRow), ...rows, ...Array(padAfter).fill(null).map(padRow)];
 }
 
 /** Rank 1 = highest pts; rank totalPlayers when score is still 0. */
@@ -2999,6 +3155,11 @@ function leaderboardScopeData(scope) {
 
 function buildLeaderboardRow(entry, staggerIndex) {
   const li = document.createElement('li');
+  if (entry.pad) {
+    li.className = 'intro-corporate-leaderboard__row intro-corporate-leaderboard__row--pad';
+    li.setAttribute('aria-hidden', 'true');
+    return li;
+  }
   li.className = 'intro-corporate-leaderboard__row';
   if (entry.peek) {
     li.classList.add('intro-corporate-leaderboard__row--peek');
@@ -3012,8 +3173,11 @@ function buildLeaderboardRow(entry, staggerIndex) {
   const ptsClass = entry.ptsTone
     ? ` intro-corporate-leaderboard__pts--${entry.ptsTone}`
     : '';
+  const rankHtml = entry.you
+    ? leaderboardRankOdometerMarkup(entry.rank)
+    : `<span class="intro-corporate-leaderboard__rank">${entry.rank}</span>`;
   li.innerHTML = `
-    <span class="intro-corporate-leaderboard__rank">${entry.rank}</span>
+    ${rankHtml}
     <span class="intro-corporate-leaderboard__name">${entry.name}</span>
     <span class="intro-corporate-leaderboard__pts${ptsClass}">${entry.pts}</span>
   `;
@@ -3026,8 +3190,8 @@ function renderLeaderboardRows(listEl, scope) {
   listEl.replaceChildren(...data.rows.map((row, index) => buildLeaderboardRow(row, index)));
 }
 
-/** Scroll position that places the You row in the middle of the leaderboard viewport. */
-function computeLeaderboardScrollToCenterYou(viewport, listEl) {
+/** Scroll so the You row sits in the center slot of the viewport (between neighbors in the list). */
+function computeLeaderboardScrollToCenterYou(viewport, listEl, panel) {
   const youRow =
     listEl?.querySelector('.intro-corporate-leaderboard__row--you:not([aria-hidden="true"])') ??
     listEl?.querySelector('.intro-corporate-leaderboard__row--you');
@@ -3038,30 +3202,65 @@ function computeLeaderboardScrollToCenterYou(viewport, listEl) {
   const maxScroll = Math.max(0, listH - viewportH);
   if (maxScroll <= 0) return 0;
 
+  const rowStep = panel ? measureLeaderboardRowStepPx(panel) : 0;
+  if (rowStep >= 8) {
+    const rows = [
+      ...listEl.querySelectorAll(
+        '.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--tape):not(.intro-corporate-leaderboard__row--pad)'
+      )
+    ];
+    const youIdx = rows.indexOf(youRow);
+    if (youIdx >= 0) {
+      const visibleRows = Math.max(1, Math.round(viewportH / rowStep));
+      const centerSlot = Math.floor(visibleRows / 2);
+      let scroll = (youIdx - centerSlot) * rowStep;
+      return Math.max(0, Math.min(maxScroll, scroll));
+    }
+  }
+
   const rowTop = youRow.offsetTop;
   const rowH = youRow.offsetHeight;
   let scroll = rowTop + rowH / 2 - viewportH / 2;
   return Math.max(0, Math.min(maxScroll, scroll));
 }
 
-function applyLeaderboardListAlign(panel, scope, { smooth = false } = {}) {
+function applyLeaderboardListAlign(panel, scope, { smooth = false, soft = false } = {}) {
   const viewport = panel?.querySelector('.intro-corporate-leaderboard__viewport');
   const listEl = panel?.querySelector('.intro-corporate-leaderboard__list');
   const data = leaderboardScopeData(scope);
   if (!viewport || !listEl || !data) return;
 
   const run = () => {
-    const scrollTarget = computeLeaderboardScrollToCenterYou(viewport, listEl);
+    const rowStep = measureLeaderboardRowStepPx(panel);
+    const maxScroll = Math.max(0, listEl.offsetHeight - viewport.clientHeight);
+    const ideal = computeLeaderboardScrollToCenterYou(viewport, listEl, panel);
+    let scrollTarget = ideal;
+
+    if (soft) {
+      const current = viewport.scrollTop;
+      const delta = ideal - current;
+      if (Math.abs(delta) <= rowStep * 1.25) {
+        scrollTarget = Math.round(current / rowStep) * rowStep;
+      } else {
+        scrollTarget = current + delta * 0.38;
+        scrollTarget = Math.round(scrollTarget / rowStep) * rowStep;
+      }
+      scrollTarget = Math.max(0, Math.min(maxScroll, scrollTarget));
+    } else if (rowStep >= 8) {
+      scrollTarget = Math.round(scrollTarget / rowStep) * rowStep;
+      scrollTarget = Math.max(0, Math.min(maxScroll, scrollTarget));
+    }
+
     viewport.classList.toggle('is-ladder-slide', smooth);
     if (smooth) {
       viewport.scrollTo({ top: scrollTarget, behavior: 'smooth' });
     } else {
       viewport.scrollTop = scrollTarget;
     }
-    listEl.dataset.lbAlign = 'you-centered';
+    listEl.dataset.lbAlign = soft ? 'you-soft' : 'you-centered';
   };
 
-  requestAnimationFrame(run);
+  requestAnimationFrame(() => requestAnimationFrame(run));
 }
 
 function measureLeaderboardRowStepPx(panel) {
@@ -3109,36 +3308,69 @@ function refreshLeaderboardPanel() {
   });
 }
 
+function leaderboardScopeDropdown(panel) {
+  return panel?.querySelector('[data-leaderboard-scope-dropdown]');
+}
+
+function closeLeaderboardScopeMenu(panel) {
+  const dropdown = leaderboardScopeDropdown(panel);
+  if (!dropdown) return;
+  const trigger = dropdown.querySelector('.intro-corporate-leaderboard-scope-trigger');
+  const menu = dropdown.querySelector('.intro-corporate-leaderboard-scope-menu');
+  dropdown.classList.remove('is-open');
+  trigger?.setAttribute('aria-expanded', 'false');
+  menu?.setAttribute('hidden', '');
+}
+
+function openLeaderboardScopeMenu(panel) {
+  const dropdown = leaderboardScopeDropdown(panel);
+  if (!dropdown) return;
+  const trigger = dropdown.querySelector('.intro-corporate-leaderboard-scope-trigger');
+  const menu = dropdown.querySelector('.intro-corporate-leaderboard-scope-menu');
+  dropdown.classList.add('is-open');
+  trigger?.setAttribute('aria-expanded', 'true');
+  menu?.removeAttribute('hidden');
+  const active = menu?.querySelector('.intro-corporate-leaderboard-scope-option.is-active');
+  active?.focus?.();
+}
+
+function toggleLeaderboardScopeMenu(panel) {
+  const dropdown = leaderboardScopeDropdown(panel);
+  if (!dropdown) return;
+  if (dropdown.classList.contains('is-open')) closeLeaderboardScopeMenu(panel);
+  else openLeaderboardScopeMenu(panel);
+}
+
 function applyLeaderboardScopeMeta(panel, scope) {
   const copy = leaderboardScopeData(scope);
   if (!panel || !copy) return;
   const moreEl = panel.querySelector('[data-leaderboard-more]');
   panel.dataset.leaderboardScope = scope;
   panel.setAttribute('aria-label', copy.aria);
-  const scopeTabs = panel.querySelector('.intro-corporate-leaderboard-scopes');
-  const activeTab = panel.querySelector(`.intro-corporate-leaderboard-scope[data-scope="${scope}"]`);
-  const panelEl = panel.querySelector('#intro-corporate-leaderboard-panel');
-  scopeTabs?.querySelectorAll('[data-scope]').forEach((tab) => {
-    const active = tab === activeTab;
-    tab.classList.toggle('is-active', active);
-    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  const dropdown = leaderboardScopeDropdown(panel);
+  const labelEl = dropdown?.querySelector('[data-leaderboard-scope-label]');
+  const activeOption = panel.querySelector(
+    `.intro-corporate-leaderboard-scope-option[data-scope="${scope}"]`
+  );
+  dropdown?.querySelectorAll('.intro-corporate-leaderboard-scope-option[data-scope]').forEach((opt) => {
+    const active = opt === activeOption;
+    opt.classList.toggle('is-active', active);
+    opt.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-  if (activeTab && panelEl) {
-    panelEl.setAttribute('aria-labelledby', activeTab.id || '');
-  }
+  if (labelEl) labelEl.textContent = copy.label;
+  closeLeaderboardScopeMenu(panel);
   if (moreEl) {
-    const lastRank = copy.rows[copy.rows.length - 1]?.rank ?? 0;
-    const below = Math.max(0, (copy.totalPlayers ?? 0) - lastRank);
-    moreEl.textContent = below > 0 ? `${below.toLocaleString('en-US')} players below` : copy.more;
+    const below = Math.max(0, (copy.totalPlayers ?? 0) - (copy.youRank ?? 0));
+    moreEl.textContent =
+      below > 0 ? `${below.toLocaleString('en-US')} players below` : '';
+    moreEl.hidden = below <= 0;
   }
 }
 
 function releaseLeaderboardScopeSwitch(panel) {
-  const scopeTabs = panel?.querySelector('.intro-corporate-leaderboard-scopes');
   delete panel?.dataset.leaderboardAnimating;
-  scopeTabs?.querySelectorAll('[data-scope]').forEach((b) => {
-    b.disabled = false;
-  });
+  const trigger = panel?.querySelector('.intro-corporate-leaderboard-scope-trigger');
+  if (trigger) trigger.disabled = false;
 }
 
 function cancelLeaderboardScopeSwitch(panel) {
@@ -3156,7 +3388,7 @@ function cancelLeaderboardScopeSwitch(panel) {
 async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
   const listEl = panel.querySelector('.intro-corporate-leaderboard__list');
   const viewportEl = panel.querySelector('.intro-corporate-leaderboard__viewport');
-  const scopeTabs = panel.querySelector('.intro-corporate-leaderboard-scopes');
+  const scopeTrigger = panel.querySelector('.intro-corporate-leaderboard-scope-trigger');
   const plan = buildLeaderboardSwitchPlan(fromScope, toScope);
   if (!plan) return false;
 
@@ -3168,9 +3400,9 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
   if (!youEl) return false;
 
   panel.dataset.leaderboardAnimating = '1';
-  scopeTabs?.querySelectorAll('[data-scope]').forEach((b) => {
-    b.disabled = true;
-  });
+  closeLeaderboardScopeMenu(panel);
+  if (scopeTrigger) scopeTrigger.disabled = true;
+  mountLeaderboardRankOdometer(youEl, plan.fromYouRank);
 
   try {
   listEl.classList.add('is-lb-switch-animating');
@@ -3187,7 +3419,7 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
   let scopeSwapped = false;
   listEl.classList.add('is-lb-swoosh-tape');
   installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, travelPx);
-  if (viewportEl) viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl);
+  if (viewportEl) viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl, panel);
 
   rowEls.forEach((el) => {
     if (!el.classList.contains('intro-corporate-leaderboard__row--tape')) {
@@ -3204,7 +3436,7 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
     youNow.style.boxShadow = t > 0 ? LB_SWITCH.pickUpShadow : '';
   });
 
-  // Phase 2 — tape scroll: list sweeps past; You stays anchored (counter-translate + scale)
+  // Phase 2 — tape scroll; You rank odometer counts through interpolated ranks
   await new Promise((resolve) => {
     const start = performance.now();
     const tick = (now) => {
@@ -3221,7 +3453,7 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
         const remainTravel = Math.abs(travelPx) * (1 - p);
         installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, remainTravel);
         if (viewportEl) {
-          viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl);
+          viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl, panel);
         }
       }
 
@@ -3233,6 +3465,7 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
 
       const youNow = listEl.querySelector('.intro-corporate-leaderboard__row--you');
       if (youNow) {
+        updateLeaderboardYouRankOdometer(youNow, plan.fromYouRank, plan.toYouRank, p);
         youNow.style.willChange = 'transform, box-shadow';
         youNow.style.transform = `translateY(${-listTy}px) scale(${LB_SWITCH.pickUpScale})`;
         youNow.style.boxShadow = LB_SWITCH.pickUpShadow;
@@ -3259,6 +3492,7 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
     listEl.style.transform = listTy !== 0 ? `translateY(${listTy}px)` : '';
     const youNow = listEl.querySelector('.intro-corporate-leaderboard__row--you');
     if (youNow) {
+      updateLeaderboardYouRankOdometer(youNow, plan.fromYouRank, plan.toYouRank, 1);
       youNow.style.transform =
         listTy !== 0
           ? `translateY(${-listTy}px) scale(${scale})`
@@ -3282,6 +3516,8 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
     renderLeaderboardRows(listEl, toScope);
     applyLeaderboardScopeMeta(panel, toScope);
   }
+  const youFinal = listEl.querySelector('.intro-corporate-leaderboard__row--you');
+  mountLeaderboardRankOdometer(youFinal, plan.toYouRank);
   applyLeaderboardListAlign(panel, toScope);
   return true;
   } finally {
@@ -3338,9 +3574,9 @@ async function setLeaderboardScope(panel, scope, { animate = true } = {}) {
 
 function wireLeaderboardScopes() {
   const panel = document.getElementById('intro-corporate-leaderboard');
-  const scopeTabs = panel?.querySelector('.intro-corporate-leaderboard-scopes');
-  if (!panel || !scopeTabs || scopeTabs.dataset.wired === '1') return;
-  scopeTabs.dataset.wired = '1';
+  const dropdown = leaderboardScopeDropdown(panel);
+  if (!panel || !dropdown || dropdown.dataset.wired === '1') return;
+  dropdown.dataset.wired = '1';
 
   if (!window.__wfLeaderboardViewportWired) {
     window.__wfLeaderboardViewportWired = true;
@@ -3350,13 +3586,45 @@ function wireLeaderboardScopes() {
   const initialScope = panel.dataset.leaderboardScope;
   panel.dataset.leaderboardScope = LEADERBOARD_SCOPE_ORDER[initialScope] != null ? initialScope : 'department';
 
-  scopeTabs.querySelectorAll('[data-scope]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const scope = btn.dataset.scope;
+  const trigger = dropdown.querySelector('.intro-corporate-leaderboard-scope-trigger');
+  const menu = dropdown.querySelector('.intro-corporate-leaderboard-scope-menu');
+
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (trigger.disabled) return;
+    toggleLeaderboardScopeMenu(panel);
+  });
+
+  menu?.querySelectorAll('[data-scope]').forEach((opt) => {
+    opt.tabIndex = -1;
+    opt.addEventListener('click', () => {
+      const scope = opt.dataset.scope;
       if (!scope || LEADERBOARD_SCOPE_ORDER[scope] == null) return;
+      closeLeaderboardScopeMenu(panel);
       void setLeaderboardScope(panel, scope);
     });
+    opt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        opt.click();
+      }
+    });
   });
+
+  if (!window.__wfLeaderboardScopeDropdownDocWired) {
+    window.__wfLeaderboardScopeDropdownDocWired = true;
+    document.addEventListener('click', (e) => {
+      const lbPanel = document.getElementById('intro-corporate-leaderboard');
+      const lbDropdown = leaderboardScopeDropdown(lbPanel);
+      if (!lbDropdown?.classList.contains('is-open')) return;
+      if (e.target instanceof Node && lbDropdown.contains(e.target)) return;
+      closeLeaderboardScopeMenu(lbPanel);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      closeLeaderboardScopeMenu(document.getElementById('intro-corporate-leaderboard'));
+    });
+  }
 
   const listEl = panel.querySelector('.intro-corporate-leaderboard__list');
   if (listEl) {
@@ -3368,8 +3636,11 @@ function tagCorporatePopTargets() {
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
   if (isCorporateSkin()) {
-    board.querySelector('.intro-corporate-nav')?.classList.add('intro-corporate-pop-target');
-    board.querySelector('.intro-corporate-board__copy')?.classList.add('intro-corporate-pop-target');
+    board.querySelectorAll('.intro-corporate-nav__item').forEach((btn) => {
+      btn.classList.add('intro-corporate-pop-target');
+    });
+    board.querySelector('.intro-corporate-board__title')?.classList.add('intro-corporate-pop-target');
+    board.querySelector('.intro-corporate-board__lead')?.classList.add('intro-corporate-pop-target');
     gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
       wrap.classList.add('intro-corporate-pop-target');
     });
@@ -3382,7 +3653,7 @@ function tagCorporatePopTargets() {
 function resetCorporatePop() {
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
-  board.classList.remove('is-pop-complete');
+  board.classList.remove('is-pop-complete', 'is-path-pop-active');
   board.classList.add('is-pop-pending');
   board.querySelectorAll('.intro-corporate-pop-target').forEach((el) => {
     el.classList.remove('is-pop-visible');
@@ -3391,8 +3662,15 @@ function resetCorporatePop() {
     wrap.classList.remove('is-pop-visible');
     wrap.classList.add('is-revealed');
   });
+  board
+    .querySelectorAll('.intro-corporate-leaderboard__row.is-lb-row-pop')
+    .forEach((row) => row.classList.remove('is-lb-row-pop', 'is-pop-visible'));
+  pathMapEl?.querySelectorAll('.intro-cord.is-intro-revealed').forEach((host) => {
+    host.classList.remove('is-intro-revealed', 'is-plugging');
+  });
   viewport?.classList.remove('is-modules-visible');
   stopCordFloat();
+  clearPlugState();
 }
 
 /** Show all corporate board UI (chapters, leaderboard, activity) without waiting on pop animation. */
@@ -3400,6 +3678,7 @@ function revealCorporateBoard() {
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
 
+  if (isCorporateSkin()) resetCorporateDashboardLayout();
   tagCorporatePopTargets();
   board.classList.remove('is-pop-pending');
   board.classList.add('is-pop-complete');
@@ -3421,14 +3700,275 @@ function revealCorporateBoard() {
   requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
 }
 
-function finishCorporatePop() {
+function finishCorporatePop(runId) {
+  if (runId != null && runId !== corporatePopRun) return;
+  const board = document.getElementById('intro-corporate-board');
+  board?.classList.remove('is-path-pop-active');
   revealCorporateBoard();
 }
 
-async function popCorporateTarget(el, runId) {
+async function popCorporateTarget(el, runId, holdMs = CORPORATE_POP.stepMs) {
   if (!el || runId !== corporatePopRun) return;
   el.classList.add('is-pop-visible');
-  await delayMs(CORPORATE_POP.stepMs);
+  await delayMs(holdMs);
+}
+
+/** Chapter cards: column order, top row before lower branch (3A before 3B). */
+function corporateModulePopOrder(modules = getRuntimeModules()) {
+  return [...modules]
+    .sort((a, b) => (a.column !== b.column ? a.column - b.column : a.row - b.row))
+    .map((m) => m.id);
+}
+
+/** Cord grows after each module, in path order (fork upper lane before lower). */
+function corporateIntroCordSequence(modules = getRuntimeModules()) {
+  const order = corporateModulePopOrder(modules);
+  const orderIdx = new Map(order.map((id, i) => [id, i]));
+  const ids = new Set(order);
+  const edges = getChapterEdges().filter(([from, to]) => ids.has(from) && ids.has(to));
+  const sequence = [];
+
+  for (let i = 0; i < order.length; i++) {
+    const from = order[i];
+    const outgoing = edges
+      .filter(([f, t]) => f === from && orderIdx.get(t) > i)
+      .sort((a, b) => orderIdx.get(a[1]) - orderIdx.get(b[1]));
+    for (const [f, t] of outgoing) sequence.push(edgeKey(f, t));
+  }
+  return sequence;
+}
+
+function markIntroCordRevealed(edgeKeyStr) {
+  const seg = findCordSegment(edgeKeyStr);
+  if (!seg) return;
+  seg.plugSettle = 1;
+  const hosts = seg.cordHosts
+    ? Object.values(seg.cordHosts)
+    : seg.group
+      ? [seg.group]
+      : [];
+  for (const host of hosts) {
+    host.classList.remove('is-plugging');
+    host.classList.add('is-intro-revealed');
+  }
+  applyCordRopePaths(cordFloatPhase);
+}
+
+function runCordGrowAnimation(edgeKeyStr, runId) {
+  return new Promise((resolve) => {
+    const finish = () => {
+      stopPlugAnimation();
+      introState.pluggingEdge = null;
+      markIntroCordRevealed(edgeKeyStr);
+      resolve();
+    };
+
+    const seg = findCordSegment(edgeKeyStr);
+    if (!seg || runId !== corporatePopRun) {
+      finish();
+      return;
+    }
+
+    refreshSubwayCordGeometry();
+    seg.plugSettle = 0;
+    applyCordRopePaths(cordFloatPhase);
+
+    const plugHosts = seg.cordHosts
+      ? Object.values(seg.cordHosts)
+      : seg.group
+        ? [seg.group]
+        : [];
+    for (const host of plugHosts) host.classList.add('is-plugging');
+    const group = seg.group ?? plugHosts[0] ?? null;
+
+    const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
+    const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
+    const shadow = seg.paths.find((p) => p.classList.contains('intro-cord-rope--shadow'));
+    const guide = body ?? seg.centerlinePath;
+    if (!guide) {
+      finish();
+      return;
+    }
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const plugHead = document.createElementNS(NS, 'circle');
+    plugHead.setAttribute('class', 'intro-cord-plug-head');
+    plugHead.setAttribute('r', seg.isSubway ? '5' : '6');
+    group?.appendChild(plugHead);
+
+    if (seg.knotStart) {
+      seg.knotStart.setAttribute('cx', String(seg.p0.x));
+      seg.knotStart.setAttribute('cy', String(seg.p0.y));
+      seg.knotStart.style.opacity = '1';
+    }
+    if (seg.knotEnd) seg.knotEnd.style.opacity = '0';
+
+    const len = guide.getTotalLength() || 1;
+    const dashLayers = [body, sheen, shadow].filter(Boolean);
+    for (const path of dashLayers) {
+      path.style.strokeDasharray = String(len);
+      path.style.strokeDashoffset = String(len);
+    }
+
+    const duration = CORPORATE_POP.cordGrowMs;
+    const start = performance.now();
+    introState.pluggingEdge = edgeKeyStr;
+
+    const tick = (now) => {
+      if (runId !== corporatePopRun) {
+        plugHead.remove();
+        finish();
+        return;
+      }
+
+      const t = Math.min(1, (now - start) / duration);
+      const eased = easeOutCubic(t);
+      const offset = len * (1 - eased);
+      for (const path of dashLayers) path.style.strokeDashoffset = String(offset);
+
+      const pt = guide.getPointAtLength(Math.min(len, len * eased));
+      plugHead.setAttribute('cx', String(pt.x));
+      plugHead.setAttribute('cy', String(pt.y));
+
+      if (t > 0.58) {
+        seg.plugSettle = ((t - 0.58) / 0.42) * 0.55;
+        refreshSubwayCordGeometry();
+        applyCordRopePaths(cordFloatPhase);
+      } else {
+        applyCordRopePaths(cordFloatPhase);
+      }
+
+      if (t < 1) {
+        introState.plugRaf = requestAnimationFrame(tick);
+      } else {
+        for (const path of dashLayers) {
+          path.style.strokeDashoffset = '0';
+        }
+        plugHead.remove();
+        if (seg.knotEnd) {
+          seg.knotEnd.setAttribute('cx', String(seg.p3.x));
+          seg.knotEnd.setAttribute('cy', String(seg.p3.y));
+          seg.knotEnd.style.opacity = '1';
+        }
+        animateCordPlugSettle(seg, finish);
+      }
+    };
+
+    introState.plugRaf = requestAnimationFrame(tick);
+  });
+}
+
+async function animateIntroCordReveal(edgeKeyStr, runId) {
+  if (runId !== corporatePopRun) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) {
+    markIntroCordRevealed(edgeKeyStr);
+    return;
+  }
+  if (!findCordSegment(edgeKeyStr)) return;
+  await runCordGrowAnimation(edgeKeyStr, runId);
+}
+
+async function measureIntroCordsAsync() {
+  return new Promise((resolve) => {
+    measureIntroCords({ onReady: resolve });
+  });
+}
+
+async function popCorporatePathSequence(board, runId) {
+  const modules = getRuntimeModules();
+  const moduleOrder = corporateModulePopOrder(modules);
+  const cordOrder = corporateIntroCordSequence(modules);
+  const cordsByFrom = new Map();
+
+  for (const key of cordOrder) {
+    const { fromId } = parseEdgeKey(key);
+    if (!cordsByFrom.has(fromId)) cordsByFrom.set(fromId, []);
+    cordsByFrom.get(fromId).push(key);
+  }
+
+  applyCorporateModuleGridLayout();
+  if (runId !== corporatePopRun) return;
+
+  board.classList.add('is-path-pop-active');
+  viewport?.classList.add('is-modules-visible');
+
+  const wraps = [...(gridEl?.querySelectorAll('.intro-module-wrap') ?? [])];
+  wraps.forEach((wrap) => wrap.classList.add('is-revealed', 'is-pop-visible'));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await measureIntroCordsAsync();
+  if (runId !== corporatePopRun) return;
+  wraps.forEach((wrap) => wrap.classList.remove('is-pop-visible'));
+
+  for (const moduleId of moduleOrder) {
+    if (runId !== corporatePopRun) return;
+    const wrap = gridEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
+    if (!wrap) continue;
+    wrap.classList.add('is-pop-visible', 'is-revealed');
+    await delayMs(CORPORATE_POP.moduleStaggerMs);
+
+    const edgeKeys = cordsByFrom.get(moduleId) ?? [];
+    for (const edgeKeyStr of edgeKeys) {
+      if (runId !== corporatePopRun) return;
+      await animateIntroCordReveal(edgeKeyStr, runId);
+    }
+  }
+}
+
+async function popCorporateSideColumn(board, runId) {
+  const blocks = [
+    board.querySelector('.intro-corporate-player-profile'),
+    board.querySelector('.intro-corporate-activity'),
+    board.querySelector('.intro-corporate-leaderboard-panel')
+  ].filter(Boolean);
+
+  for (const block of blocks) {
+    if (runId !== corporatePopRun) return;
+    await popCorporateTarget(block, runId, CORPORATE_POP.sideStaggerMs);
+  }
+
+  const rows = [
+    ...(board.querySelectorAll(
+      '.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--pad):not(.intro-corporate-leaderboard__row--tape)'
+    ) ?? [])
+  ];
+  let shown = 0;
+  for (const row of rows) {
+    if (runId !== corporatePopRun) return;
+    row.classList.add('is-lb-row-pop', 'is-pop-visible');
+    await delayMs(CORPORATE_POP.lbRowStaggerMs);
+    if (++shown >= CORPORATE_POP.lbRowCap) break;
+  }
+}
+
+/** Recover a broken corporate dashboard (hidden path, empty grid, stale layout cheat). */
+function recoverCorporateDashboard() {
+  if (!isCorporateSkin()) return;
+
+  resetCorporateDashboardLayout();
+
+  const wrapCount = gridEl?.querySelectorAll('.intro-module-wrap').length ?? 0;
+  if (!wrapCount) renderModules();
+
+  revealCorporateBoard();
+  syncCorporatePathViewport();
+  queueIntroCordLayout();
+  wireSecretChapterTrigger();
+}
+
+/** Settle the corporate dashboard (chapters visible). */
+function bootstrapCorporateIntro() {
+  if (!isCorporateSkin()) return;
+  if (
+    (getCurrentChapter() === 2 && isChapterHandoffDone()) ||
+    (getCurrentChapter() === 3 && isChapter3HandoffDone())
+  ) {
+    return;
+  }
+
+  if (!document.getElementById('intro-corporate-board')) return;
+
+  recoverCorporateDashboard();
 }
 
 async function runCorporatePopSequence() {
@@ -3444,45 +3984,51 @@ async function runCorporatePopSequence() {
   }
 
   const runId = ++corporatePopRun;
-  stopIntroAuto();
+  try {
+    stopIntroAuto();
 
-  stage.style.transform = 'none';
-  syncParallax(0);
-  document.documentElement.classList.remove('is-intro-scrubbing');
-  viewport?.classList.remove('is-hero-visible', 'is-camera-moving');
+    stage.style.transform = 'none';
+    syncParallax(0);
+    document.documentElement.classList.remove('is-intro-scrubbing');
+    viewport?.classList.remove('is-hero-visible', 'is-camera-moving');
 
-  resetCorporatePop();
-  tagCorporatePopTargets();
+    resetCorporatePop();
+    tagCorporatePopTargets();
 
-  const nav = board.querySelector('.intro-corporate-nav');
-  const copy = board.querySelector('.intro-corporate-board__copy');
-  const leaderboard = board.querySelector('.intro-corporate-leaderboard-panel');
-  const moduleWraps = [...(gridEl?.querySelectorAll('.intro-module-wrap') ?? [])];
+    const navItems = [...board.querySelectorAll('.intro-corporate-nav__item')];
+    const title = board.querySelector('.intro-corporate-board__title');
+    const lead = board.querySelector('.intro-corporate-board__lead');
 
-  await popCorporateTarget(nav, runId);
-  if (runId !== corporatePopRun) return;
+    for (const btn of navItems) {
+      if (runId !== corporatePopRun) return;
+      await popCorporateTarget(btn, runId, CORPORATE_POP.navStaggerMs);
+    }
 
-  await popCorporateTarget(copy, runId);
-  if (runId !== corporatePopRun) return;
+    if (title) {
+      await popCorporateTarget(title, runId, CORPORATE_POP.copyStaggerMs);
+      if (runId !== corporatePopRun) return;
+    }
 
-  for (const wrap of moduleWraps) {
+    if (lead) {
+      await popCorporateTarget(lead, runId, CORPORATE_POP.copyStaggerMs);
+      if (runId !== corporatePopRun) return;
+    }
+
+    await popCorporatePathSequence(board, runId);
     if (runId !== corporatePopRun) return;
-    wrap.classList.add('is-pop-visible', 'is-revealed');
-    await delayMs(CORPORATE_POP.moduleStaggerMs);
+
+    await popCorporateSideColumn(board, runId);
+    if (runId !== corporatePopRun) return;
+
+    finishCorporatePop(runId);
+  } catch (err) {
+    console.error('[wf-map] corporate pop sequence failed', err);
+    if (runId === corporatePopRun) revealCorporateBoard();
+  } finally {
+    if (runId === corporatePopRun && board.classList.contains('is-pop-pending')) {
+      revealCorporateBoard();
+    }
   }
-
-  const profile = board.querySelector('.intro-corporate-player-profile');
-  await popCorporateTarget(profile, runId);
-  if (runId !== corporatePopRun) return;
-
-  const activity = board.querySelector('.intro-corporate-activity');
-  await popCorporateTarget(activity, runId);
-  if (runId !== corporatePopRun) return;
-
-  await popCorporateTarget(leaderboard, runId);
-  if (runId !== corporatePopRun) return;
-
-  finishCorporatePop();
 }
 
 function moduleById(id) {
@@ -5049,8 +5595,7 @@ function queueIntroCordLayout() {
   cordLayoutRaf = requestAnimationFrame(() => {
     cordLayoutRaf = 0;
     if (introState.pluggingEdge || introState.plugActive) return;
-    if (isCorporateSkin() || isSpaceSkin()) applyCorporateModuleGridLayout();
-    if (isCorporateSkin() && !introState.complete) return;
+    if (isCorporateSkin() || isSpaceSkin()) applyCorporateModuleGridLayout({ skipCatalogSync: true });
     measureIntroCords();
     if (
       !introState.autoDriving &&
@@ -5517,8 +6062,7 @@ function runIntroSequence() {
 
   if (isCorporateSkin()) {
     introState.stops = null;
-    introState.complete = false;
-    requestAnimationFrame(() => runCorporatePopSequence());
+    bootstrapCorporateIntro();
     return;
   }
 
@@ -5538,10 +6082,17 @@ function runIntroSequence() {
 }
 
 function initIntroScrollControl() {
-  viewport.addEventListener('wheel', onIntroWheel, { passive: false });
+  viewport?.addEventListener('wheel', onIntroWheel, { passive: false });
 }
 
-initTheme();
+window.addEventListener('error', (event) => {
+  console.error('[wf-map] uncaught error', event.error ?? event.message);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[wf-map] unhandled rejection', event.reason);
+});
+
+initCheatPanel();
 
 buildStarfield();
 initModuleModal();
@@ -5551,6 +6102,7 @@ renderModules();
 if (isCorporateSkin()) {
   ensurePathZoomControls();
   syncCorporatePathMapToCatalog();
+  bootstrapCorporateIntro();
 }
 if (usesIntroSidePanel()) syncPlayerProfile();
 syncCorporateIntroClass();
@@ -5564,13 +6116,8 @@ window.addEventListener('wf-theme-change', () => {
   renderModules();
 
   if (isCorporateSkin()) {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced || introState.complete) {
-      revealCorporateBoard();
-    } else {
-      introState.complete = false;
-      runCorporatePopSequence();
-    }
+    revealCorporateBoard();
+    queueIntroCordLayout();
     return;
   }
 
@@ -5622,6 +6169,13 @@ window.addEventListener('wf-sync-next-play-glow', () => {
 window.addEventListener('wf-path-highlight-mode-change', () => {
   clearModulePathHover();
   syncPersistentPathHighlights();
+});
+
+window.addEventListener('wf-path-grid-layout-change', () => {
+  if (!isCorporateSkin() && !isSpaceSkin()) return;
+  renderModules();
+  if (isCorporateSkin()) syncCorporatePathViewport();
+  queueIntroCordLayout();
 });
 
 window.addEventListener('pageshow', (event) => {
@@ -5689,6 +6243,7 @@ window.addEventListener('wf-progress-change', (event) => {
 window.addEventListener('resize', () => {
   introState.stops = null;
   if (isCorporateSkin()) {
+    syncCorporatePathViewport();
     queueIntroCordLayout();
     return;
   }
@@ -5699,7 +6254,10 @@ window.addEventListener('resize', () => {
 });
 
 if (typeof ResizeObserver !== 'undefined') {
-  const cordObserver = new ResizeObserver(() => queueIntroCordLayout());
+  const cordObserver = new ResizeObserver(() => {
+    if (isCorporateSkin()) syncCorporatePathViewport();
+    queueIntroCordLayout();
+  });
   if (pathMapEl) cordObserver.observe(pathMapEl);
   const modulesPathEl = document.getElementById('modules');
   if (modulesPathEl) cordObserver.observe(modulesPathEl);
@@ -5711,6 +6269,12 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 initIntroScrollControl();
+
+if (isCorporateSkin()) {
+  requestAnimationFrame(() => {
+    recoverCorporateDashboard();
+  });
+}
 
 if (getCurrentChapter() === 3 && isChapter3HandoffDone()) {
   if (isCorporateSkin()) bootstrapCorporateChapter3View();

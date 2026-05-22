@@ -13,6 +13,7 @@ import {
   starsForModule,
   starsFromEmpathyScore
 } from './empathy-score.js';
+import { getPathGridLayoutMode, layoutPathGridModules } from './path-grid-layout.js';
 
 const STORAGE_KEY = 'wf-map-corp-progress';
 const CORPORATE_VOLUME_CHEAT_KEY = 'wf-cheat-corporate-volumes';
@@ -377,9 +378,9 @@ export function beginChapter3() {
   notifyChange({ chapter: 3 });
 }
 
-export function getRuntimeModule(id) {
-  const base = moduleCatalog().find((m) => m.id === id);
+function buildRuntimeModule(base) {
   if (!base) return null;
+  const id = base.id;
   const empathyScore =
     typeof state.moduleScores[id] === 'number' ? state.moduleScores[id] : null;
 
@@ -391,6 +392,17 @@ export function getRuntimeModule(id) {
     lastDirection: state.lastDirections[id] ?? null,
     empathyScore
   };
+}
+
+function buildRuntimeModules() {
+  const raw = moduleCatalog()
+    .map((m) => buildRuntimeModule(m))
+    .filter(Boolean);
+  return layoutPathGridModules(raw, getPathGridLayoutMode());
+}
+
+export function getRuntimeModule(id) {
+  return buildRuntimeModules().find((m) => m.id === id) ?? null;
 }
 
 /** True when the module already shows stars or was played before this run. */
@@ -462,7 +474,7 @@ export function syncModuleScoresFromActivity(activityEntries) {
 }
 
 export function getRuntimeModules() {
-  return moduleCatalog().map((m) => getRuntimeModule(m.id));
+  return buildRuntimeModules();
 }
 
 export function getChapterEdges() {

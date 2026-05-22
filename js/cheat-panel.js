@@ -43,7 +43,7 @@ import {
 } from './layout-cheat.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = 'corp-11';
+const PANEL_VERSION = 'corp-12';
 
 function panelIsCurrent(panel) {
   return (
@@ -56,6 +56,23 @@ function panelIsCurrent(panel) {
   );
 }
 
+function ensureCheatFab() {
+  let fab = document.getElementById('wf-cheat-fab');
+  if (fab) return fab;
+
+  fab = document.createElement('button');
+  fab.id = 'wf-cheat-fab';
+  fab.type = 'button';
+  fab.className = 'cheat-panel-fab';
+  fab.setAttribute('aria-label', 'Open cheat panel');
+  fab.setAttribute('aria-expanded', 'false');
+  fab.innerHTML =
+    '<span class="cheat-panel-fab__mark" aria-hidden="true">◇</span><span class="cheat-panel-fab__label">Cheat</span>';
+  fab.addEventListener('click', () => toggleCheatPanel());
+  document.body.appendChild(fab);
+  return fab;
+}
+
 function ensurePanel() {
   let panel = document.getElementById(PANEL_ID);
   if (panelIsCurrent(panel)) return panel;
@@ -63,6 +80,7 @@ function ensurePanel() {
   panel = buildPanel();
   wirePanel(panel);
   syncPanelUi(panel);
+  ensureCheatFab();
   return panel;
 }
 
@@ -289,6 +307,8 @@ function syncPanelUi(panel) {
 function setPanelOpen(panel, open) {
   panel.classList.toggle('is-open', open);
   panel.hidden = !open;
+  const fab = document.getElementById('wf-cheat-fab');
+  fab?.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 const CHEAT_PANEL_TRIGGERS =
@@ -462,7 +482,12 @@ function onPageShow(event) {
   }
 }
 
+let cheatPanelInitialized = false;
+
 export function initCheatPanel() {
+  if (cheatPanelInitialized) return;
+  cheatPanelInitialized = true;
+
   initTheme();
   initModuleLayout();
   initLayoutCheat();
@@ -473,5 +498,3 @@ export function initCheatPanel() {
   wireSecretChapterTrigger();
   window.addEventListener('pageshow', onPageShow);
 }
-
-initCheatPanel();
