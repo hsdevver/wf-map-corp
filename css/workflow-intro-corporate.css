@@ -832,6 +832,39 @@ html[data-skin='space'] .intro-corporate-leaderboard__list.is-lb-switch-animatin
 html[data-skin='corporate'] .intro-corporate-leaderboard__viewport.is-lb-switch-animating,
 html[data-skin='space'] .intro-corporate-leaderboard__viewport.is-lb-switch-animating {
   scroll-behavior: auto;
+  overflow-y: hidden;
+  background: rgba(12, 14, 22, 0.55);
+}
+
+/* Scope switch — whole list tape scroll; You counter-moves to stay in frame */
+html[data-skin='corporate'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape,
+html[data-skin='space'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape {
+  will-change: transform;
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast
+  .intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--you),
+html[data-skin='space'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast
+  .intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--you) {
+  opacity: 0.55;
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast,
+html[data-skin='space'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast {
+  filter: blur(0.45px);
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__row--tape,
+html[data-skin='space'] .intro-corporate-leaderboard__row--tape {
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast
+  .intro-corporate-leaderboard__row--tape,
+html[data-skin='space'] .intro-corporate-leaderboard__list.is-lb-swoosh-tape.is-lb-swoosh-fast
+  .intro-corporate-leaderboard__row--tape {
+  opacity: 0.42;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1680,20 +1713,23 @@ html[data-skin='corporate'] .intro-corporate-board__path .intro-path-grid {
 }
 
 html[data-skin='corporate'] .intro-path-grid {
-  width: 100%;
+  width: max-content;
   max-width: none;
   height: auto;
   min-height: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    var(--path-grid-cols, 5),
+    var(--path-card-size, 12.3125rem)
+  );
   grid-template-rows: repeat(3, auto);
   column-gap: var(--intro-col-gap);
   row-gap: var(--intro-row-gap);
   align-items: center;
   justify-items: center;
   align-content: center;
-  justify-content: center;
+  justify-content: start;
   padding: 0.25rem var(--intro-path-hover-pad, 16px);
   box-sizing: border-box;
 }

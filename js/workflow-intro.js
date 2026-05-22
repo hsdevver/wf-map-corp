@@ -221,8 +221,8 @@ function applyCorporateModuleGridLayout() {
   const maxCol = Math.max(1, ...modules.map((m) => m.column));
   if (!isCorporateSkin()) {
     gridEl.style.gridTemplateRows = `repeat(${maxRow}, auto)`;
+    gridEl.style.gridTemplateColumns = `repeat(${maxCol}, minmax(0, 1fr))`;
   }
-  gridEl.style.gridTemplateColumns = `repeat(${maxCol}, minmax(0, 1fr))`;
 
   modules.forEach((mod) => {
     const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
@@ -268,7 +268,7 @@ const PATH_CARD_MIN_PX = 80;
 const PATH_FOCUS_COLUMN_COUNT = 5;
 const PATH_LATE_FOCUS_START_COL = 3;
 const PATH_COLUMN_AFTER_CH3 = 4;
-const PATH_COLUMN_OVERVIEW_MS = 3000;
+const PATH_COLUMN_OVERVIEW_MS = 2250;
 const PATH_COLUMN_REVEAL_MS = 2800;
 const PATH_FOCUS_PAN_MS = 2800;
 const PATH_COLUMN_REVEAL_EASE = [0.14, 0.92, 0.18, 1];
@@ -429,6 +429,7 @@ function pathFocusWindowKeyFor(window) {
 function applyPathGridCardSize(box, cardSize) {
   if (!gridEl || !pathMapEl) return;
   gridEl.style.setProperty('--path-card-size', `${cardSize}px`);
+  gridEl.style.setProperty('--path-grid-cols', String(box.maxCol));
   pathMapEl.style.setProperty('--path-viewport-height', `${box.availH}px`);
 
   if (box.isLinear) {
@@ -450,44 +451,29 @@ function applyPathGridCardSize(box, cardSize) {
 }
 
 /**
- * Wide-volume focus: fixed column tracks at Vol 1/2 card size so cols 6–7 clip off-screen.
- * Overview: flexible 1fr tracks so all columns fit. Tube stroke widths stay in CSS (not scaled).
+ * Fixed column tracks at --intro-col-gap — never stretch 1fr (that created huge empty lanes).
+ * Wide focus: full grid width + pan shows five columns; narrow volumes: compact grid centered.
  */
 function applyPathGridColumnTracks(box, cardSize) {
   if (!gridEl) return;
 
-  const wide = pathNeedsColumnReveal();
-  if (!wide) {
-    gridEl.style.removeProperty('width');
-    gridEl.style.removeProperty('min-width');
-    gridEl.style.removeProperty('max-width');
-    gridEl.style.removeProperty('justify-content');
-    return;
-  }
+  const gridW = box.maxCol * cardSize + (box.maxCol - 1) * box.colGap;
+  const gridStyle = getComputedStyle(gridEl);
+  const padX =
+    (parseFloat(gridStyle.paddingLeft) || 0) + (parseFloat(gridStyle.paddingRight) || 0);
 
-  const useFixedTracks =
-    pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD ||
-    pathColumnRevealPhase === 'revealing' ||
-    pathFocusPanAnimating;
+  gridEl.style.gridTemplateColumns = `repeat(${box.maxCol}, ${cardSize}px)`;
+  gridEl.style.width = `${gridW}px`;
+  gridEl.style.minWidth = `${gridW + padX}px`;
+  gridEl.style.maxWidth = 'none';
+  gridEl.style.justifyContent = 'start';
+}
 
-  if (useFixedTracks) {
-    gridEl.style.gridTemplateColumns = `repeat(${box.maxCol}, ${cardSize}px)`;
-    const gridW = box.maxCol * cardSize + (box.maxCol - 1) * box.colGap;
-    const gridStyle = getComputedStyle(gridEl);
-    const padX =
-      (parseFloat(gridStyle.paddingLeft) || 0) + (parseFloat(gridStyle.paddingRight) || 0);
-    /* content-box width + horizontal pad = room for next-play bloom on edge columns */
-    gridEl.style.width = `${gridW}px`;
-    gridEl.style.minWidth = `${gridW + padX}px`;
-    gridEl.style.maxWidth = 'none';
-    gridEl.style.justifyContent = 'start';
-  } else {
-    gridEl.style.gridTemplateColumns = `repeat(${box.maxCol}, minmax(0, 1fr))`;
-    gridEl.style.width = '100%';
-    gridEl.style.removeProperty('min-width');
-    gridEl.style.removeProperty('max-width');
-    gridEl.style.justifyContent = 'center';
-  }
+/** Pan when the grid is narrower than the path lane (centers Vol 1–2 five-column maps). */
+function computePathGridCenterPan(box, cardSize) {
+  const totalW = getPathGridWidth(box, cardSize);
+  if (totalW >= box.availW - 2) return 0;
+  return (box.availW - totalW) * 0.5;
 }
 
 function getPathGridWidth(box, cardSize) {
@@ -780,7 +766,7 @@ function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
   pathRevealBounds = {
     overviewSize,
     focusSize,
-    panOverview: 0,
+    panOverview: computePathGridCenterPan(box, overviewSize),
     panFocus,
     panFocusEarly: computePathFocusPanX(box, focusSize, 1, PATH_FOCUS_COLUMN_COUNT),
     panFocusLate: computePathFocusPanX(
@@ -1012,7 +998,11 @@ function syncCorporatePathViewport() {
   const needsReveal = pathNeedsColumnReveal();
   if (!needsReveal) {
     resetPathColumnReveal();
-    applyPathGridCardSize(box, computePathCardSize(box, box.maxCol));
+    const cardSize = computePathCardSize(box, box.maxCol);
+    applyPathGridCardSize(box, cardSize);
+    const centerPan = computePathGridCenterPan(box, cardSize);
+    pathStagePanX = centerPan;
+    setPathMapStageTransform(centerPan);
     return;
   }
 
@@ -2481,6 +2471,10 @@ const LB_SWITCH = {
   flyCapRows: 6,
   /** Extra shift per row away from You — sells flying past neighbors */
   parallaxSpread: 0.38,
+  /** Fake rows scrolled during scope swoosh (added to rank-based travel) */
+  swooshScrollBoostRows: 4,
+  /** When 0–1 swoosh progress crosses this, swap department ↔ company rows */
+  swooshSwapAt: 0.48,
   easePickUp: [0.4, 0, 1, 1],
   easeSwoosh: [0.25, 0.46, 0.45, 0.94],
   easeShuffle: [0.34, 1.08, 0.64, 1],
@@ -2499,6 +2493,73 @@ function leaderboardFlyRows(fromRank, toRank) {
 
 function leaderboardRowParallaxPx(index, youIdx, rowStep, travelEase) {
   return (index - youIdx) * rowStep * LB_SWITCH.parallaxSpread * travelEase;
+}
+
+/** Slow start → fast middle → soft stop (fake ladder scroll, not expand/pop). */
+function leaderboardSwooshProgress(t) {
+  const ramp = 0.14;
+  const land = 0.86;
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  if (t < ramp) {
+    const u = t / ramp;
+    return 0.07 * cubicBezierEase(0.28, 0.08, 0.42, 1, u);
+  }
+  if (t > land) {
+    const u = (t - land) / (1 - land);
+    return 0.93 + 0.07 * cubicBezierEase(0.18, 0.82, 0.38, 1, u);
+  }
+  const u = (t - ramp) / (land - ramp);
+  return 0.07 + 0.86 * u;
+}
+
+/** Total list translate for the swoosh (sign = scroll direction through ranks). */
+function leaderboardSwooshTravelPx(fromRank, toRank, rowStep) {
+  const flyRows = leaderboardFlyRows(fromRank, toRank);
+  const boost = Math.sign(flyRows || 1) * LB_SWITCH.swooshScrollBoostRows;
+  const rows = flyRows === 0 ? boost : flyRows + boost;
+  return rows * rowStep;
+}
+
+function leaderboardTapeRowPool(listEl) {
+  const rows = [...listEl.querySelectorAll('.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--tape)')];
+  const pool = rows.filter((r) => !r.classList.contains('intro-corporate-leaderboard__row--you'));
+  return pool.length ? pool : rows;
+}
+
+function cloneLeaderboardTapeRow(sourceRow) {
+  const li = sourceRow.cloneNode(true);
+  li.classList.add('intro-corporate-leaderboard__row--tape');
+  li.classList.remove('intro-corporate-leaderboard__row--you');
+  li.setAttribute('aria-hidden', 'true');
+  return li;
+}
+
+/** Extra rows above/below so translateY never exposes empty viewport. */
+function installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, travelPx) {
+  removeLeaderboardTapeBuffers(listEl);
+  const pool = leaderboardTapeRowPool(listEl);
+  if (!pool.length || !viewportEl) return 0;
+
+  const viewH = viewportEl.clientHeight || 0;
+  const bufCount = Math.ceil((viewH + Math.abs(travelPx)) / rowStep) + 4;
+  const topFrag = document.createDocumentFragment();
+  const botFrag = document.createDocumentFragment();
+
+  for (let i = 0; i < bufCount; i++) {
+    topFrag.appendChild(cloneLeaderboardTapeRow(pool[i % pool.length]));
+    botFrag.appendChild(
+      cloneLeaderboardTapeRow(pool[(pool.length - 1 - (i % pool.length))] ?? pool[0])
+    );
+  }
+
+  listEl.insertBefore(topFrag, listEl.firstChild);
+  listEl.appendChild(botFrag);
+  return bufCount;
+}
+
+function removeLeaderboardTapeBuffers(listEl) {
+  listEl?.querySelectorAll('.intro-corporate-leaderboard__row--tape').forEach((el) => el.remove());
 }
 
 function cubicBezierEase(x1, y1, x2, y2, t) {
@@ -3106,12 +3167,6 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
   const youEl = listEl.querySelector('.intro-corporate-leaderboard__row--you');
   if (!youEl) return false;
 
-  const youByIndex = new Map(rowEls.map((el, i) => [i, el]));
-  const sharedEls = plan.shared.map((item) => ({
-    ...item,
-    el: item.key === 'you' ? youEl : youByIndex.get(item.currentIndex)
-  }));
-
   panel.dataset.leaderboardAnimating = '1';
   scopeTabs?.querySelectorAll('[data-scope]').forEach((b) => {
     b.disabled = true;
@@ -3128,147 +3183,59 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
     'is-escalator-exit-up'
   );
 
+  const travelPx = leaderboardSwooshTravelPx(plan.fromYouRank, plan.toYouRank, rowStep);
+  let scopeSwapped = false;
+  listEl.classList.add('is-lb-swoosh-tape');
+  installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, travelPx);
+  if (viewportEl) viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl);
+
   rowEls.forEach((el) => {
-    el.style.willChange = 'transform, opacity';
+    if (!el.classList.contains('intro-corporate-leaderboard__row--tape')) {
+      el.style.willChange = 'transform, opacity';
+    }
   });
 
   // Phase 1 — pick up (You row only)
   await tweenLeaderboard(LB_SWITCH.pickUpMs, LB_SWITCH.easePickUp, (t) => {
     const scale = 1 + (LB_SWITCH.pickUpScale - 1) * t;
-    youEl.style.transform = `scale(${scale})`;
-    youEl.style.boxShadow = t > 0 ? LB_SWITCH.pickUpShadow : '';
+    const youNow = listEl.querySelector('.intro-corporate-leaderboard__row--you');
+    if (!youNow) return;
+    youNow.style.transform = `scale(${scale})`;
+    youNow.style.boxShadow = t > 0 ? LB_SWITCH.pickUpShadow : '';
   });
 
-  const leavingEls = plan.leaving
-    .map((item) => ({ ...item, el: youByIndex.get(item.currentIndex) }))
-    .filter((item) => item.el && item.el !== youEl);
-
-  const enteringEls = plan.entering.map((item) => {
-    const li = buildLeaderboardRow(item.entry, item.targetIndex);
-    const fromBelow = !item.aboveYou;
-    const enterOffset = (fromBelow ? 1 : -1) * LB_SWITCH.exitOffsetRows * rowStep;
-    listEl.appendChild(li);
-    const appendIndex = listEl.children.length - 1;
-    const slotDelta = (item.targetIndex - appendIndex) * rowStep;
-    const startY = enterOffset + slotDelta;
-    li.style.opacity = '0';
-    li.style.transform = `translateY(${startY}px)`;
-    li.style.willChange = 'transform, opacity';
-    return { ...item, el: li, startY };
-  });
-
-  const exitMs = LB_SWITCH.swooshMs * LB_SWITCH.exitMsRatio;
-  const flyRows = leaderboardFlyRows(plan.fromYouRank, plan.toYouRank);
-  const flyPx = flyRows * rowStep;
-  const slotTravelPx = (plan.targetYouIdx - plan.currentYouIdx) * rowStep;
-  const sharedByEl = new Map(
-    sharedEls.filter((item) => item.el && item.el !== youEl).map((item) => [item.el, item])
-  );
-  const leavingByEl = new Map(leavingEls.map((item) => [item.el, item]));
-  const enteringByEl = new Map(enteringEls.map((item) => [item.el, item]));
-  const rowIndexByEl = new Map(rowEls.map((el, i) => [el, i]));
-  enteringEls.forEach((item) => rowIndexByEl.set(item.el, item.targetIndex));
-
-  const rowMotionAt = (el, easeSwoosh, easeShuffle, easeExit, elapsed) => {
-    const entering = enteringByEl.get(el);
-    if (entering) {
-      if (elapsed < LB_SWITCH.enterDelayMs) {
-        return { ty: entering.startY, opacity: 0 };
-      }
-      const enterDur = Math.max(1, LB_SWITCH.swooshMs - LB_SWITCH.enterDelayMs);
-      const enterT = Math.min(1, (elapsed - LB_SWITCH.enterDelayMs) / enterDur);
-      const easeEnter = cubicBezierEase(
-        LB_SWITCH.easeShuffle[0],
-        LB_SWITCH.easeShuffle[1],
-        LB_SWITCH.easeShuffle[2],
-        LB_SWITCH.easeShuffle[3],
-        enterT
-      );
-      const streamY =
-        flyPx * easeSwoosh +
-        leaderboardRowParallaxPx(
-          entering.targetIndex,
-          plan.currentYouIdx,
-          rowStep,
-          easeSwoosh
-        );
-      return {
-        ty: entering.startY * (1 - easeEnter) + streamY * easeEnter,
-        opacity: easeEnter
-      };
-    }
-
-    const idx = rowIndexByEl.get(el) ?? 0;
-    const conveyor = flyPx * easeSwoosh;
-    const parallax = leaderboardRowParallaxPx(
-      idx,
-      plan.currentYouIdx,
-      rowStep,
-      easeSwoosh
-    );
-    let ty = conveyor + parallax;
-
-    const shared = sharedByEl.get(el);
-    if (shared) {
-      ty += (shared.targetIndex - shared.currentIndex) * rowStep * easeShuffle;
-    }
-
-    const leaving = leavingByEl.get(el);
-    if (leaving) {
-      const dir = leaving.aboveYou ? -LB_SWITCH.exitOffsetRows : LB_SWITCH.exitOffsetRows;
-      ty += dir * rowStep * easeExit;
-      return { ty, opacity: 1 - easeExit };
-    }
-
-    return { ty, opacity: 1 };
-  };
-
-  const motionSnapshot = new Map();
-  const scrollStart = viewportEl?.scrollTop ?? 0;
-  const scrollTravel = flyPx * 0.5;
-
-  // Phase 2 — swoosh (You flies through rank space; neighbors stream past)
+  // Phase 2 — tape scroll: list sweeps past; You stays anchored (counter-translate + scale)
   await new Promise((resolve) => {
     const start = performance.now();
     const tick = (now) => {
       const elapsed = now - start;
       const swooshT = Math.min(1, elapsed / LB_SWITCH.swooshMs);
-      const exitT = Math.min(1, elapsed / exitMs);
-      const easeSwoosh = cubicBezierEase(
-        LB_SWITCH.easeSwoosh[0],
-        LB_SWITCH.easeSwoosh[1],
-        LB_SWITCH.easeSwoosh[2],
-        LB_SWITCH.easeSwoosh[3],
-        swooshT
-      );
-      const easeShuffle = cubicBezierEase(
-        LB_SWITCH.easeShuffle[0],
-        LB_SWITCH.easeShuffle[1],
-        LB_SWITCH.easeShuffle[2],
-        LB_SWITCH.easeShuffle[3],
-        swooshT
-      );
-      const easeExit = cubicBezierEase(
-        LB_SWITCH.easePickUp[0],
-        LB_SWITCH.easePickUp[1],
-        LB_SWITCH.easePickUp[2],
-        LB_SWITCH.easePickUp[3],
-        exitT
-      );
+      const p = leaderboardSwooshProgress(swooshT);
+      const listTy = travelPx * p;
 
-      const userTravel = flyPx * easeSwoosh + slotTravelPx * easeSwoosh;
-      youEl.style.transform = `translateY(${userTravel}px) scale(${LB_SWITCH.pickUpScale})`;
-      motionSnapshot.set(youEl, { ty: userTravel, opacity: 1 });
-      if (viewportEl) {
-        viewportEl.scrollTop = scrollStart + scrollTravel * easeSwoosh;
+      if (!scopeSwapped && p >= LB_SWITCH.swooshSwapAt) {
+        scopeSwapped = true;
+        removeLeaderboardTapeBuffers(listEl);
+        renderLeaderboardRows(listEl, toScope);
+        applyLeaderboardScopeMeta(panel, toScope);
+        const remainTravel = Math.abs(travelPx) * (1 - p);
+        installLeaderboardTapeBuffers(listEl, viewportEl, rowStep, remainTravel);
+        if (viewportEl) {
+          viewportEl.scrollTop = computeLeaderboardScrollToCenterYou(viewportEl, listEl);
+        }
       }
 
-      for (const el of listEl.querySelectorAll('.intro-corporate-leaderboard__row')) {
-        if (el === youEl) continue;
-        const { ty, opacity } = rowMotionAt(el, easeSwoosh, easeShuffle, easeExit, elapsed);
-        el.style.transform = `translateY(${ty}px)`;
-        el.style.opacity = String(opacity);
-        motionSnapshot.set(el, { ty, opacity });
+      const fast = swooshT > 0.16 && swooshT < 0.8;
+      listEl.classList.toggle('is-lb-swoosh-fast', fast);
+
+      listEl.style.transform = `translateY(${listTy}px)`;
+      listEl.style.willChange = 'transform';
+
+      const youNow = listEl.querySelector('.intro-corporate-leaderboard__row--you');
+      if (youNow) {
+        youNow.style.willChange = 'transform, box-shadow';
+        youNow.style.transform = `translateY(${-listTy}px) scale(${LB_SWITCH.pickUpScale})`;
+        youNow.style.boxShadow = LB_SWITCH.pickUpShadow;
       }
 
       if (elapsed >= LB_SWITCH.swooshMs) {
@@ -3280,30 +3247,23 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
     requestAnimationFrame(tick);
   });
 
-  for (const item of sharedEls) {
-    if (item.el) applyLeaderboardRowEntry(item.el, item.targetEntry, item.targetIndex);
-  }
+  listEl.classList.remove('is-lb-swoosh-tape', 'is-lb-swoosh-fast');
+  removeLeaderboardTapeBuffers(listEl);
 
-  // Phase 3 — slam down; list rows settle back with You
+  // Phase 3 — decelerate tape to rest, slam You down, center on new scope
+  const endListTy = travelPx;
   await tweenLeaderboard(LB_SWITCH.dropMs, LB_SWITCH.easeDrop, (t) => {
     const settle = 1 - t;
+    const listTy = endListTy * settle;
     const scale = LB_SWITCH.pickUpScale + (1 - LB_SWITCH.pickUpScale) * t;
-    const youSnap = motionSnapshot.get(youEl);
-    const youTy = (youSnap?.ty ?? 0) * settle;
-    youEl.style.transform = `translateY(${youTy}px) scale(${scale})`;
-    youEl.style.boxShadow = t < 1 ? LB_SWITCH.pickUpShadow : '';
-
-    for (const el of listEl.querySelectorAll('.intro-corporate-leaderboard__row')) {
-      if (el === youEl) continue;
-      const snap = motionSnapshot.get(el);
-      if (!snap) continue;
-      el.style.transform = `translateY(${snap.ty * settle}px)`;
-      if (snap.opacity < 1) {
-        el.style.opacity = String(snap.opacity * settle + (1 - settle));
-      }
-    }
-    if (viewportEl) {
-      viewportEl.scrollTop = scrollStart + scrollTravel * settle;
+    listEl.style.transform = listTy !== 0 ? `translateY(${listTy}px)` : '';
+    const youNow = listEl.querySelector('.intro-corporate-leaderboard__row--you');
+    if (youNow) {
+      youNow.style.transform =
+        listTy !== 0
+          ? `translateY(${-listTy}px) scale(${scale})`
+          : `scale(${scale})`;
+      youNow.style.boxShadow = t < 1 ? LB_SWITCH.pickUpShadow : '';
     }
   });
 
@@ -3311,17 +3271,23 @@ async function runLeaderboardScopeSwitch(panel, fromScope, toScope) {
 
   listEl.classList.remove('is-lb-switch-animating');
   viewportEl?.classList.remove('is-lb-switch-animating');
+  listEl.style.transform = '';
+  listEl.style.willChange = '';
+  removeLeaderboardTapeBuffers(listEl);
   for (const el of listEl.querySelectorAll('.intro-corporate-leaderboard__row')) {
     clearLeaderboardRowMotionStyles(el);
   }
 
-  renderLeaderboardRows(listEl, toScope);
-  applyLeaderboardScopeMeta(panel, toScope);
+  if (!scopeSwapped) {
+    renderLeaderboardRows(listEl, toScope);
+    applyLeaderboardScopeMeta(panel, toScope);
+  }
   applyLeaderboardListAlign(panel, toScope);
   return true;
   } finally {
-    listEl.classList.remove('is-lb-switch-animating');
+    listEl.classList.remove('is-lb-switch-animating', 'is-lb-swoosh-tape', 'is-lb-swoosh-fast');
     viewportEl?.classList.remove('is-lb-switch-animating');
+    removeLeaderboardTapeBuffers(listEl);
     releaseLeaderboardScopeSwitch(panel);
   }
 }
