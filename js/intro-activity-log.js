@@ -2,7 +2,7 @@ import {
   CONSEQUENCE_MODULES,
   getChapterGraph,
   getChapterCapsLabel
-} from './consequence-flow.js?v=flow-wiring-cheat-v1';
+} from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
 import {
   computeEmpathyScore,
   EMPATHY_SCORE_FOUR_STARS,

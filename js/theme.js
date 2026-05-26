@@ -143,7 +143,8 @@ export function deriveCorporatePalette(primaryHex) {
   const bright = hslToHex((h + 4) % 360, Math.min(90, s * 0.95 + 4), Math.min(68, l * 1.12 + 14));
   const glow = hslToHex((h + 8) % 360, Math.min(95, s * 1.05), Math.min(78, l * 1.2 + 18));
 
-  const heroGradient = `linear-gradient(145deg, #141820 0%, ${deep} 34%, ${mid} 68%, ${bright} 100%)`;
+  const ink = hslToHex(h, Math.min(42, s * 0.38 + 10), Math.max(14, l * 0.22));
+  const heroGradient = `linear-gradient(145deg, ${ink} 0%, ${deep} 30%, ${mid} 64%, ${bright} 100%)`;
   const heroGlow = `radial-gradient(ellipse 72% 92% at 88% 52%, ${rgba(glow, 0.48)} 0%, transparent 58%)`;
 
   return {

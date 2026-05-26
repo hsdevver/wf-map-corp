@@ -326,27 +326,22 @@ function triggerModuleHoverPop(card) {
   card.classList.add('is-hover-pop');
 }
 
-function onCardPointerOver(event) {
-  if (event.pointerType === 'touch') return;
+/** One hover SFX + visual pop per mouse enter (cards are rendered after init). */
+export function bindModuleCardHoverSound(card) {
+  if (!card || card.dataset.hoverSoundBound === '1') return;
+  card.dataset.hoverSoundBound = '1';
 
-  const card = event.target.closest('.module-card:not(.locked)');
-  if (!card) return;
+  card.addEventListener('mouseenter', () => {
+    if (card.classList.contains('locked')) return;
+    triggerModuleHoverPop(card);
+    void playModuleHoverClick();
+  });
 
-  const from = event.relatedTarget;
-  if (from && card.contains(from)) return;
-
-  triggerModuleHoverPop(card);
-  playModuleHoverClick();
-}
-
-function onCardPointerOut(event) {
-  const card = event.target.closest('.module-card:not(.locked)');
-  if (!card) return;
-
-  const to = event.relatedTarget;
-  if (to && card.contains(to)) return;
-
-  card.classList.remove('is-hover-pop');
+  card.addEventListener('mouseleave', (event) => {
+    const to = event.relatedTarget;
+    if (to instanceof Node && card.contains(to)) return;
+    card.classList.remove('is-hover-pop');
+  });
 }
 
 let lockedPressCard = null;
@@ -431,8 +426,7 @@ export function initModuleCardSounds(root = document) {
   initHoverSoundSync();
   wireSoundUnlock();
 
-  root.addEventListener('pointerover', onCardPointerOver);
-  root.addEventListener('pointerout', onCardPointerOut);
+  root.querySelectorAll('.module-card').forEach(bindModuleCardHoverSound);
   root.addEventListener('pointerdown', onLockedCardPointerDown);
   root.addEventListener('pointerup', onLockedCardRelease);
   root.addEventListener('pointercancel', onLockedCardRelease);

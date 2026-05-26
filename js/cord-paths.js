@@ -526,6 +526,185 @@ export function applySubwayLaneBundles(segments, options) {
   }
 }
 
+/** Map-local vertical center of a module wrap. */
+function flexWrapCenterY(wrap, mapRect) {
+  const rect = wrap.getBoundingClientRect();
+  return rect.top + rect.height * 0.5 - mapRect.top;
+}
+
+/**
+ * Flex layout — spine cards and branch stacks share one vertical center line;
+ * tubes attach at card centers (reference fork/merge), not gap junctions.
+ * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object }[]} segments
+ * @param {HTMLElement | null} pathMapEl
+ */
+export function applyFlexStackCordAlignment(segments, pathMapEl) {
+  if (!pathMapEl || !segments?.length) return;
+  const pathRoot = pathMapEl.closest('.intro-path-map');
+  if (
+    pathRoot?.classList.contains('is-path-grid-flex') !== true &&
+    document.documentElement.dataset.pathGridLayout !== 'flex'
+  ) {
+    return;
+  }
+
+  const mapRect = pathMapEl.getBoundingClientRect();
+  /** @type {Map<string, { moduleIndex: Map<string, number>, centers: number[] }>} */
+  const stackByModule = new Map();
+
+  pathMapEl.querySelectorAll('.intro-path-stack--branch').forEach((stack) => {
+    const wraps = [...stack.querySelectorAll('.intro-module-wrap[data-module-anchor]')].sort(
+      (a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top
+    );
+    if (wraps.length < 2) return;
+
+    const moduleIndex = new Map(wraps.map((wrap, i) => [wrap.dataset.moduleAnchor, i]));
+    const centers = wraps.map((wrap) => flexWrapCenterY(wrap, mapRect));
+    for (const wrap of wraps) {
+      stackByModule.set(wrap.dataset.moduleAnchor, { moduleIndex, centers });
+    }
+  });
+
+  const setEndY = (seg, end, y) => {
+    if (end === 'p0') seg.p0 = { x: seg.p0.x, y };
+    else seg.p3 = { x: seg.p3.x, y };
+  };
+
+  const spineCenterY = (moduleId) => {
+    const wrap = pathMapEl.querySelector(`[data-module-anchor="${moduleId}"]`);
+    return wrap ? flexWrapCenterY(wrap, mapRect) : null;
+  };
+
+  const forkFromSpine = new Map();
+
+  for (const seg of segments) {
+    if (!seg.isSubway) continue;
+    const [fromId, toId] = seg.key.split('|');
+    const fromStack = stackByModule.get(fromId);
+    const toStack = stackByModule.get(toId);
+
+    if (toStack && seg.toSide === 'left') {
+      const idx = toStack.moduleIndex.get(toId);
+      if (idx != null) setEndY(seg, 'p3', toStack.centers[idx]);
+    }
+
+    if (fromStack && seg.fromSide === 'right') {
+      const idx = fromStack.moduleIndex.get(fromId);
+      if (idx != null) setEndY(seg, 'p0', fromStack.centers[idx]);
+    }
+
+    if (toStack && !fromStack && seg.fromSide === 'right' && seg.toSide === 'left') {
+      const y = spineCenterY(fromId);
+      if (y != null) {
+        setEndY(seg, 'p0', y);
+        if (!forkFromSpine.has(fromId)) forkFromSpine.set(fromId, []);
+        forkFromSpine.get(fromId).push(seg);
+      }
+    }
+
+    if (fromStack && !toStack && seg.fromSide === 'right' && seg.toSide === 'left') {
+      const y = spineCenterY(toId);
+      if (y != null) setEndY(seg, 'p3', y);
+    }
+  }
+
+  for (const list of forkFromSpine.values()) {
+    if (list.length < 2) continue;
+    const y = list[0].p0.y;
+    for (const seg of list) setEndY(seg, 'p0', y);
+  }
+}
+
+/** @param {{ fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object }} seg */
+function subwaySegmentEndpoints(seg) {
+  const rl = seg.fromSide === 'right' && seg.toSide === 'left';
+  return rl ? { from: seg.p0, to: seg.p3 } : { from: seg.p3, to: seg.p0 };
+}
+
+/** Shared gutter bucket key for column-to-column subway trunks. */
+function subwayGutterBucketKey(seg) {
+  const { from, to } = subwaySegmentEndpoints(seg);
+  const fromX = seg.fromSide === 'right' && seg.toSide === 'left' ? from.x : to.x;
+  const toX = seg.fromSide === 'right' && seg.toSide === 'left' ? to.x : from.x;
+  return `${Math.round(fromX / 12)}|${Math.round(toX / 12)}`;
+}
+
+/**
+ * Corporate path map — one trunk per gutter (no parallel lane stack) and hide duplicate
+ * unfilled spines that would stack opacity in the same corridor.
+ * @param {{ key: string, isSubway?: boolean, filled?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object, corporateSpineHidden?: boolean }[]} segments
+ * @param {(edgeKey: string) => boolean} isEdgeFilled
+ */
+export function applyCorporateSubwayLaneLayout(segments, isEdgeFilled) {
+  if (!segments?.length) return;
+
+  const buckets = new Map();
+
+  for (const seg of segments) {
+    if (!seg.isSubway) continue;
+    const rl = seg.fromSide === 'right' && seg.toSide === 'left';
+    const lr = seg.fromSide === 'left' && seg.toSide === 'right';
+    if (!rl && !lr) continue;
+
+    const key = subwayGutterBucketKey(seg);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({ seg, rl });
+  }
+
+  for (const list of buckets.values()) {
+    list.sort((a, b) => {
+      const aMid = (a.seg.p0.y + a.seg.p3.y) * 0.5;
+      const bMid = (b.seg.p0.y + b.seg.p3.y) * 0.5;
+      return aMid - bMid;
+    });
+
+    list.forEach((item) => {
+      const { seg, rl } = item;
+      const from = rl ? seg.p0 : seg.p3;
+      const to = rl ? seg.p3 : seg.p0;
+      const dx = to.x - from.x;
+      const dirX = dx >= 0 ? 1 : -1;
+      const laneGap = Math.min(72, Math.max(28, Math.abs(dx) * 0.26));
+      const exitX = from.x + dirX * laneGap;
+      const entryX = to.x - dirX * laneGap;
+      const midX = (exitX + entryX) * 0.5;
+      seg.anchorOpts = {
+        ...seg.anchorOpts,
+        subwayMidX: midX,
+        subwayLaneGap: laneGap,
+        subwayLane: 1
+      };
+    });
+
+    const keptUnfilledSpans = [];
+
+    for (const { seg } of list) {
+      const filled = isEdgeFilled(seg.key);
+      seg.filled = filled;
+      if (filled) {
+        seg.corporateSpineHidden = false;
+        continue;
+      }
+
+      const { from, to } = subwaySegmentEndpoints(seg);
+      const yLo = Math.min(from.y, to.y);
+      const yHi = Math.max(from.y, to.y);
+      const midX = Math.round(seg.anchorOpts?.subwayMidX ?? (from.x + to.x) * 0.5);
+
+      const overlaps = keptUnfilledSpans.some(
+        (k) => k.midX === midX && Math.min(k.yHi, yHi) - Math.max(k.yLo, yLo) > 12
+      );
+
+      if (overlaps) {
+        seg.corporateSpineHidden = true;
+      } else {
+        seg.corporateSpineHidden = false;
+        keptUnfilledSpans.push({ midX, yLo, yHi });
+      }
+    }
+  }
+}
+
 /**
  * Stagger each edge's vertical trunk (midX) so parallel tubes between the same columns do not cross.
  * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object }[]} segments

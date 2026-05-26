@@ -5,15 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Workflow map — Corporate</title>
     <link rel="stylesheet" href="../css/theme.css" />
-    <link rel="stylesheet" href="../css/cheat-panel.css?v=corp-9" />
+    <link rel="stylesheet" href="../css/cheat-panel.css?v=corp-16" />
     <link rel="stylesheet" href="../css/workflow-intro.css?v=corp-plug-land-v3" />
-    <link rel="stylesheet" href="../css/workflow-intro-corporate.css?v=corp-sidebar-frost-dark-v1" />
+    <link rel="stylesheet" href="../css/workflow-intro-corporate.css?v=corp-intro-chapter-hide-v1" />
     <link rel="stylesheet" href="../css/module-modal.css" />
     <link rel="stylesheet" href="../css/module-modal-corporate.css" />
     <link rel="stylesheet" href="../css/module-folder-bento.css" />
     <style>
       html[data-skin='corporate'][data-corporate-appearance='image'] {
         --corporate-hero-photo: url('../assets/corporate-hero-office.jpg');
+      }
+
+      /* Paint guard — first frame only; director adds .is-intro-director-active to release it */
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-board__copy,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-module-wrap,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-nav__item,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-nav__connector,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-player-profile,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-activity,
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-leaderboard {
+        opacity: 0;
+        transition: none;
+        pointer-events: none;
+      }
+
+      html[data-skin='corporate']
+        #intro-corporate-board.is-pop-pending:not(.is-intro-director-active)
+        .intro-corporate-board__copy {
+        transform: translate3d(0, 12px, 0);
       }
     </style>
   </head>
@@ -27,7 +60,7 @@
               data-chapter="1"
               aria-label="Volume 1"
             >
-              <div class="intro-corporate-board" id="intro-corporate-board">
+              <div class="intro-corporate-board is-pop-pending is-intro-director" id="intro-corporate-board">
                 <div class="intro-corporate-board__backdrop" aria-hidden="true"></div>
                 <header class="intro-corporate-board__hero">
                   <nav class="intro-corporate-nav" aria-label="Volumes">
@@ -336,6 +369,6 @@
 
     <div id="ambient" class="intro-ambient" aria-hidden="true"></div>
 
-    <script src="../js/workflow-intro.js?v=flow-wiring-cheat-v1" type="module"></script>
+    <script src="../js/workflow-intro.js?v=corp-path-pan-2d-v1" type="module"></script>
   </body>
 </html>

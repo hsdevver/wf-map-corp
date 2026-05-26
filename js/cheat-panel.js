@@ -44,18 +44,24 @@ import {
 import { getFlowWiringMode, initFlowWiringCheat, setFlowWiringMode } from './flow-wiring-cheat.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = 'corp-13';
+const PANEL_VERSION = 'corp-16';
+
+function isWorkflowIntroPage() {
+  return /\/workflow-intro\//.test(window.location.pathname);
+}
 
 function panelIsCurrent(panel) {
-  return (
-    panel?.dataset.panelVersion === PANEL_VERSION &&
-    panel.querySelector('[data-corporate-appearance]') &&
-    panel.querySelector('[data-music-volume]') &&
-    panel.querySelector('[data-music-track]') &&
-    panel.querySelector('[data-hover-sound-volume]') &&
-    (!/\/workflow-intro\//.test(window.location.pathname) ||
-      (panel.querySelector('[data-cheat-layout]') && panel.querySelector('[data-flow-wiring]')))
-  );
+  if (!panel || panel.dataset.panelVersion !== PANEL_VERSION) return false;
+  if (!panel.querySelector('[data-corporate-appearance]')) return false;
+  if (!panel.querySelector('[data-music-volume]')) return false;
+  if (!panel.querySelector('[data-music-track]')) return false;
+  if (!panel.querySelector('[data-hover-sound-volume]')) return false;
+  if (isWorkflowIntroPage()) {
+    if (!panel.querySelector('[data-cheat-layout]')) return false;
+    if (!panel.querySelector('[data-flow-wiring]')) return false;
+  }
+  if (!panel.querySelector('.cheat-panel__body')) return false;
+  return true;
 }
 
 function ensureCheatFab() {
@@ -106,13 +112,14 @@ function buildPanel() {
 
   const state = getThemeState();
   const presets = getCorporateThemePresets();
-  const showPathReset = /\/workflow-intro\//.test(window.location.pathname);
+  const showPathReset = isWorkflowIntroPage();
 
   panel.innerHTML = `
     <header class="cheat-panel__header">
       <h2 class="cheat-panel__title">Cheat panel</h2>
       <button type="button" class="cheat-panel__close" data-cheat-close aria-label="Close">×</button>
     </header>
+    <div class="cheat-panel__body">
 
     <section class="cheat-panel__section" data-cheat-corporate-appearance aria-labelledby="cheat-corporate-appearance-label">
       <span class="cheat-panel__label" id="cheat-corporate-appearance-label">Corporate appearance</span>
@@ -142,19 +149,6 @@ function buildPanel() {
     </section>
 
     ${showPathReset ? buildLayoutSkeletonHtml() : ''}
-
-    ${
-      showPathReset
-        ? `<section class="cheat-panel__section" data-cheat-flow-wiring aria-labelledby="cheat-flow-wiring-label">
-      <span class="cheat-panel__label" id="cheat-flow-wiring-label">Flow wiring</span>
-      <div class="cheat-panel__segmented" role="group" aria-label="Volume 3 path complexity" data-flow-wiring>
-        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="complicated">Complicated</button>
-        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="simple">Simple</button>
-      </div>
-      <p class="cheat-panel__sound-note">Complicated adds the 3B → 4A branch tube. Simple keeps 3B on the center row to 4B only.</p>
-    </section>`
-        : ''
-    }
 
     <section class="cheat-panel__section" aria-labelledby="cheat-music-label">
       <span class="cheat-panel__label" id="cheat-music-label">Background music</span>
@@ -216,6 +210,12 @@ function buildPanel() {
       showPathReset
         ? `<section class="cheat-panel__section" aria-labelledby="cheat-path-label">
       <span class="cheat-panel__label" id="cheat-path-label">Path progress</span>
+      <span class="cheat-panel__label" id="cheat-flow-wiring-label">Flow wiring</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Volume 3 path complexity" data-flow-wiring>
+        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="complicated">Complicated</button>
+        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="simple">Simple</button>
+      </div>
+      <p class="cheat-panel__sound-note">Complicated adds the 3B → 4A branch tube. Simple keeps 3B on the center row to 4B only.</p>
       <div class="cheat-panel__path-actions">
         <div class="cheat-panel__path-row" role="group" aria-label="Volume access">
           <button type="button" class="cheat-panel__reset-path" data-lock-all-volumes>Lock all volumes</button>
@@ -240,6 +240,7 @@ function buildPanel() {
     </section>`
         : ''
     }
+    </div>
   `;
 
   document.body.appendChild(panel);
@@ -512,17 +513,18 @@ function onPageShow(event) {
 let cheatPanelInitialized = false;
 
 export function initCheatPanel() {
-  if (cheatPanelInitialized) return;
-  cheatPanelInitialized = true;
+  if (!cheatPanelInitialized) {
+    cheatPanelInitialized = true;
+    initTheme();
+    initModuleLayout();
+    initLayoutCheat();
+    initFlowWiringCheat();
+    initAmbientMusicSync();
+    initModuleCardSounds();
+    window.addEventListener('pageshow', onPageShow);
+  }
 
-  initTheme();
-  initModuleLayout();
-  initLayoutCheat();
-  initFlowWiringCheat();
-  initAmbientMusicSync();
-  initModuleCardSounds();
   const panel = ensurePanel();
   if (panel.querySelector('[data-cheat-layout]')) syncLayoutSkeletonUi(panel);
   wireSecretChapterTrigger();
-  window.addEventListener('pageshow', onPageShow);
 }

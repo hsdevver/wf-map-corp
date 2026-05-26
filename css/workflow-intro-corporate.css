@@ -41,6 +41,20 @@ html[data-skin='corporate'] {
     rgba(6, 9, 14, 0.2) 34%,
     transparent 44%
   );
+  /* Path column — lighter left edge so the map is not crushed to black */
+  --corporate-backdrop-path-vignette: linear-gradient(
+    102deg,
+    rgba(8, 10, 14, 0.46) 0%,
+    rgba(8, 10, 14, 0.24) 36%,
+    rgba(8, 10, 14, 0.08) 58%,
+    transparent 78%
+  );
+  --corporate-backdrop-path-vignette-image: linear-gradient(
+    102deg,
+    rgba(8, 10, 14, 0.26) 0%,
+    rgba(8, 10, 14, 0.1) 46%,
+    rgba(8, 10, 14, 0.14) 100%
+  );
   /* Frosted sidebar cards — darker veil + subtle rim light (backdrop shade carries contrast) */
   --side-card-glass-frost: linear-gradient(
     158deg,
@@ -210,8 +224,8 @@ html[data-skin='corporate'] .intro-corporate-board__backdrop {
 html[data-skin='corporate'][data-corporate-appearance='image'] .intro-corporate-board__backdrop {
   background-image:
     var(--corporate-backdrop-sidebar-shade),
-    linear-gradient(180deg, rgba(10, 12, 16, 0.5) 0%, rgba(10, 12, 16, 0.18) 42%, rgba(10, 12, 16, 0.45) 100%),
-    linear-gradient(108deg, rgba(8, 10, 14, 0.4) 0%, rgba(8, 10, 14, 0.12) 55%, rgba(8, 10, 14, 0.28) 100%),
+    linear-gradient(180deg, rgba(10, 12, 16, 0.44) 0%, rgba(10, 12, 16, 0.16) 42%, rgba(10, 12, 16, 0.4) 100%),
+    var(--corporate-backdrop-path-vignette-image),
     var(
       --corporate-hero-photo,
       url('../assets/corporate-hero-office.jpg')
@@ -234,8 +248,8 @@ html[data-skin='corporate'][data-corporate-appearance='image'] .intro-corporate-
 html[data-skin='corporate'][data-corporate-appearance='color'] .intro-corporate-board__backdrop {
   background-image:
     var(--corporate-backdrop-sidebar-shade),
-    linear-gradient(180deg, rgba(8, 10, 14, 0.55) 0%, rgba(8, 10, 14, 0.2) 45%, rgba(8, 10, 14, 0.5) 100%),
-    linear-gradient(108deg, rgba(8, 10, 14, 0.82) 0%, rgba(8, 10, 14, 0.45) 42%, rgba(8, 10, 14, 0.12) 68%),
+    linear-gradient(180deg, rgba(8, 10, 14, 0.48) 0%, rgba(8, 10, 14, 0.18) 45%, rgba(8, 10, 14, 0.46) 100%),
+    var(--corporate-backdrop-path-vignette),
     var(
       --corporate-hero-gradient,
       linear-gradient(145deg, #141820 0%, #2a1812 38%, #6b2d22 72%, #9a3d28 100%)
@@ -293,7 +307,7 @@ html[data-skin='corporate'] .intro-corporate-board__body {
 }
 
 html[data-skin='corporate'] .intro-corporate-board__main {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -905,18 +919,37 @@ html[data-skin='corporate'] .intro-corporate-leaderboard__sheet-head,
 html[data-skin='space'] .intro-corporate-leaderboard__sheet-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
+  justify-content: flex-start;
+  gap: 1.35rem;
+  width: 100%;
   flex: 0 0 auto;
   margin-bottom: 0.55rem;
-  padding-bottom: 0.5rem;
+  padding: 0 0 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  text-align: center;
+  text-align: left;
+  line-height: 1;
 }
 
 html[data-skin='corporate'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard__label,
 html[data-skin='space'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard__label {
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard-scopes,
+html[data-skin='space'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard-scopes {
+  display: inline-flex;
+  align-items: center;
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard-scope-trigger,
+html[data-skin='space'] .intro-corporate-leaderboard__sheet-head .intro-corporate-leaderboard-scope-trigger {
+  line-height: 1;
+  min-height: 0;
 }
 
 html[data-skin='corporate'] .intro-corporate-leaderboard__label,
@@ -1700,7 +1733,6 @@ html[data-skin='corporate'] .intro-viewport.is-modules-visible .intro-corporate-
   z-index: 1;
   display: flex !important;
   flex: 1 1 0;
-  min-height: min(38vh, 28rem);
   flex-direction: column;
   align-items: stretch;
   justify-content: stretch;
@@ -1712,8 +1744,7 @@ html[data-skin='corporate'] .intro-viewport.is-modules-visible .intro-corporate-
   box-sizing: border-box;
   background: transparent;
   border-top: none;
-  overflow-x: visible;
-  overflow-y: hidden;
+  overflow: hidden;
 }
 
 html[data-skin='corporate'] .intro-corporate-board__path.intro-modules {
@@ -1772,32 +1803,123 @@ html[data-skin='corporate'] .intro-corporate-board__path .intro-path-map {
   flex: 1 1 0;
   flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: stretch;
   width: 100%;
   min-width: 0;
   min-height: 0;
   height: 100%;
   max-width: none;
   margin: 0;
-  padding: 0.5rem 0 0.75rem;
+  padding: clamp(0.35rem, 1vh, 0.5rem) 0 clamp(0.25rem, 0.8vh, 0.35rem);
   background: transparent;
   border: none;
   border-radius: 0;
   box-shadow: none;
   transform: none;
   --path-map-scale: 1;
+  --path-edge-fade: clamp(1.75rem, 5vh, 3.25rem);
   overflow: hidden;
   transition:
     transform 0.38s var(--corporate-pop-ease, ease),
     opacity 0.38s var(--corporate-pop-ease, ease);
 }
 
+/* Edge blur strips — DOM + backdrop-filter (see path-map-edge-blur.js) */
+html[data-skin='corporate'] .intro-path-map.has-path-edge-blur {
+  --path-edge-blur-zone: var(--path-edge-fade, clamp(1.75rem, 5vh, 3.25rem));
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-stack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  height: var(--path-edge-blur-zone);
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-stack--top {
+  top: 0;
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom {
+  bottom: 0;
+  flex-direction: column-reverse;
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-layer {
+  flex: 1 1 0;
+  min-height: 0;
+  -webkit-backdrop-filter: blur(var(--path-edge-blur-amount, 12px)) saturate(1.12);
+  backdrop-filter: blur(var(--path-edge-blur-amount, 12px)) saturate(1.12);
+  pointer-events: none;
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-stack--top .intro-path-map__edge-blur-layer {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+}
+
+html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom .intro-path-map__edge-blur-layer {
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+}
+
+@supports not (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
+  html[data-skin='corporate'] .intro-path-map__edge-blur-layer {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--corporate-ink, #0f1218) 35%, transparent),
+      transparent
+    );
+  }
+
+  html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom .intro-path-map__edge-blur-layer {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--corporate-ink, #0f1218) 35%, transparent),
+      transparent
+    );
+  }
+}
+
 html[data-skin='corporate'] .intro-path-map__stage {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   will-change: transform;
+}
+
+/* Pan uses top-left origin so translate clamps match overflow math */
+html[data-skin='corporate'] .intro-path-map.is-path-pan-enabled .intro-path-map__stage {
+  justify-content: flex-start;
+}
+
+html[data-skin='corporate'] .intro-path-map.is-path-stage-fill .intro-path-map__stage {
+  justify-content: center;
+}
+
+html[data-skin='corporate'] .intro-path-map__stage > .intro-path-grid {
+  align-self: flex-start;
+  box-sizing: border-box;
 }
 
 html[data-skin='corporate'] .intro-path-map.is-path-column-revealing .intro-path-map__stage {
@@ -1839,12 +1961,21 @@ html[data-skin='corporate'] .intro-path-map.is-path-pan-dragging .intro-module-w
 html[data-skin='corporate'] .intro-path-zoom-controls {
   position: absolute;
   left: 50%;
-  bottom: 5%;
+  bottom: clamp(0.85rem, 2.2vh, 1.35rem);
   transform: translateX(-50%);
-  z-index: 24;
+  z-index: 26;
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.5rem;
+  padding: 0.28rem 0.38rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 12, 18, 0.62);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 10px 28px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
 }
 
@@ -1922,58 +2053,39 @@ html[data-skin='corporate'] .intro-metaball-layer {
   display: none !important;
 }
 
-/* Subway-map cords — thick orthogonal lanes with rounded elbows */
+/* Subway-map cords — single hairline lane; accent fill shows the route taken */
 html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope {
   stroke-linecap: round;
   stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
-html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--shadow {
-  stroke: rgba(8, 12, 20, 0.55);
-  stroke-width: 17;
-  filter: none;
-  opacity: 0.72;
+html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--shadow,
+html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--sheen {
+  display: none;
 }
 
 html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--body {
-  stroke-width: 11;
-}
-
-/* Unplayed routes — full network visible, dull frosted glass tubes */
-html[data-skin='corporate'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .intro-cord-rope--shadow {
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 15;
-  opacity: 0.9;
-}
-
-html[data-skin='corporate'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .intro-cord-rope--body {
-  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 4.5;
+  stroke: rgba(255, 255, 255, 0.32);
   filter: none;
+  opacity: 1;
 }
 
-html[data-skin='corporate'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .intro-cord-rope--sheen {
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 2;
-  opacity: 0.55;
+html[data-skin='corporate'] .intro-cord--subway.is-corporate-spine-hidden {
+  display: none;
 }
 
-/* Played / unlocking — themed fill */
+/* Taken route — accent stroke reveals direction (dash animates on in JS) */
 html[data-skin='corporate'] .intro-cord--subway.is-filled .intro-cord-rope--body,
 html[data-skin='corporate'] .intro-cord--subway.is-plugging .intro-cord-rope--body {
+  stroke-width: 5.5;
   stroke: var(--corporate-accent, var(--lane-fill-done, var(--theme-color)));
   filter: drop-shadow(
-    0 0 10px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 45%, transparent)
+    0 0 8px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 50%, transparent)
   );
 }
 
-html[data-skin='corporate'] .intro-cord--subway.is-filled .intro-cord-rope--shadow,
-html[data-skin='corporate'] .intro-cord--subway.is-plugging .intro-cord-rope--shadow {
-  stroke: rgba(8, 12, 20, 0.55);
-  stroke-width: 17;
-  opacity: 0.72;
-}
-
-html[data-skin='corporate'] .intro-cord--subway.is-filled .intro-cord-rope--sheen,
 html.is-plug-active .intro-module-wrap.is-plug-landing > .module-card.is-plug-landing,
 html.is-plug-active .intro-module-wrap.is-plug-target > .module-card.locked {
   animation-play-state: running !important;
@@ -1982,12 +2094,6 @@ html.is-plug-active .intro-module-wrap.is-plug-target > .module-card.locked {
 html[data-skin='corporate'] .intro-module-wrap.is-plug-target .module-card.locked {
   outline: 2px solid color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 50%, transparent);
   outline-offset: 3px;
-}
-
-html[data-skin='corporate'] .intro-cord--subway.is-plugging .intro-cord-rope--sheen {
-  stroke: rgba(255, 255, 255, 0.42);
-  stroke-width: 2.5;
-  opacity: 0.9;
 }
 
 html[data-skin='corporate'] .intro-corporate-board__path .intro-path-grid {
@@ -2041,14 +2147,29 @@ html[data-skin='corporate'] .intro-path-map.is-path-column-revealing:not(.is-pat
   height: var(--path-card-size, var(--card-size, 197px));
 }
 
-/* Branch pair only (rows 1 & 3) — vertical gap matches chapter 1 fork after m2 */
-html[data-skin='corporate'] .intro-path-stack--branch {
+/* Flex path grid — one lane row; spine solos + branch stacks vertically centered */
+html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex {
+  align-items: center;
+  align-content: center;
+  row-gap: var(--intro-row-gap);
+}
+
+html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex .intro-module-wrap--solo {
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+}
+
+html[data-path-grid-layout='flex'] .intro-path-stack--branch,
+html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex .intro-path-stack--branch {
   display: flex;
   flex-direction: column;
-  gap: var(--intro-branch-gap);
-  width: 100%;
-  align-self: start;
-  justify-self: stretch;
+  gap: var(--intro-row-gap);
+  width: var(--path-card-size, var(--card-size, 197px));
+  max-width: 100%;
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
   box-sizing: border-box;
 }
 
@@ -2058,6 +2179,7 @@ html[data-skin='corporate'] .intro-path-stack--branch .intro-module-wrap {
   height: auto;
   aspect-ratio: 1;
   min-height: 0;
+  overflow: visible;
 }
 
 html[data-skin='corporate'] .intro-module-wrap--next-play {
@@ -2087,6 +2209,12 @@ html[data-skin='corporate'] .intro-module-wrap {
   align-self: center;
   opacity: 1;
   filter: none;
+  overflow: visible;
+}
+
+html[data-skin='corporate'] .intro-module-wrap:has(.module-card:not(.locked):hover),
+html[data-skin='space'] .intro-module-wrap:has(.module-card:not(.locked):hover) {
+  z-index: 14;
 }
 
 html[data-skin='corporate'] .intro-module-wrap .module-card {
@@ -2102,6 +2230,21 @@ html[data-skin='corporate'] .intro-module-wrap .module-card {
   box-shadow:
     0 0 2.5px rgba(0, 0, 0, 0.08),
     0 8px 20px rgba(0, 0, 0, 0.18);
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.32, 1),
+    filter 0.28s cubic-bezier(0.22, 1, 0.32, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 1, 0.32, 1);
+}
+
+/* Open chapters — always scale on pointer hover (not only during path-tube highlight). */
+html[data-skin='corporate'] .intro-path-map:not(.is-path-pan-dragging) .intro-module-wrap .module-card:not(.locked):hover,
+html[data-skin='space'] .intro-path-map:not(.is-path-pan-dragging) .intro-module-wrap .module-card:not(.locked):hover {
+  transform: scale(1.03);
+  filter: brightness(1.04);
+  box-shadow:
+    0 0 2.5px rgba(0, 0, 0, 0.08),
+    0 10px 22px rgba(0, 0, 0, 0.2),
+    0 0 16px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 28%, transparent);
 }
 
 html[data-skin='corporate'] .intro-module-wrap .module-card.locked {
@@ -2363,15 +2506,49 @@ html[data-skin='corporate'] .module-diamond-badge svg {
   height: 100%;
 }
 
-html[data-skin='corporate'] .module-card.locked .module-padlock {
+html[data-skin='corporate'] .module-card.locked .module-padlock,
+html[data-skin='corporate'] .module-card.is-unlocking .module-padlock {
   z-index: 3;
 }
 
-html[data-skin='corporate'] .module-card.locked .module-padlock::before {
-  background: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 8%, rgba(255, 255, 255, 0.58));
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  border-color: rgba(255, 255, 255, 0.45);
+html[data-skin='corporate'] .module-card.locked .module-padlock svg,
+html[data-skin='corporate'] .module-card.is-unlocking .module-padlock svg {
+  color: rgba(255, 255, 255, 0.94);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
+}
+
+html[data-skin='corporate'] .module-card.locked .module-padlock .lock-shackle,
+html[data-skin='corporate'] .module-card.is-unlocking .module-padlock .lock-shackle {
+  stroke: rgba(255, 255, 255, 0.94);
+}
+
+html[data-skin='corporate'] .module-card.is-unlocking .module-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px) saturate(1.35);
+  backdrop-filter: blur(10px) saturate(1.35);
+  transition:
+    background 0.52s ease,
+    backdrop-filter 0.52s ease,
+    box-shadow 0.52s ease;
+}
+
+html[data-skin='corporate'] .module-card.is-unlocking .module-thumb__img {
+  display: block;
+  filter: blur(14px) saturate(1.05);
+  transform: scale(1.06);
+  transition:
+    filter 0.52s cubic-bezier(0.22, 1, 0.32, 1),
+    transform 0.52s cubic-bezier(0.22, 1, 0.32, 1);
+}
+
+html[data-skin='corporate'] .module-card.is-unlocking .module-thumb__overlay {
+  transition:
+    opacity 0.52s ease,
+    background 0.52s ease;
+}
+
+html[data-skin='corporate'].wf-chapter-thumb-image .module-card.is-unlocking .module-thumb__img {
+  display: block;
 }
 
 html[data-skin='corporate'] .intro-viewport.is-modules-visible .intro-module-wrap.is-revealed {
@@ -2400,16 +2577,6 @@ html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highl
   z-index: 1;
 }
 
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-dim,
-html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-dim {
-  z-index: 4;
-}
-
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap:not(.is-path-hover-dim),
-html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap:not(.is-path-hover-dim) {
-  z-index: 10;
-}
-
 /* Module hover — upstream pathways glow + decision labels */
 html[data-skin='corporate'] .intro-path-hover-tooltips {
   position: absolute;
@@ -2426,67 +2593,32 @@ html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-h
   z-index: 5;
 }
 
-/* Single-tube hover — dim every other cord; glow only the highlighted segment */
-html[data-skin='corporate'] .intro-path-map.is-cord-edge-hover:is(.is-module-path-hover) .intro-connectors__layer--body [data-cord-edge]:not(.is-path-highlight) .intro-cord-rope--body,
-html[data-skin='corporate'] .intro-path-map.is-cord-edge-hover:is(.is-module-path-hover) .intro-connectors__layer--shadow [data-cord-edge]:not(.is-path-highlight) .intro-cord-rope--shadow,
-html[data-skin='corporate'] .intro-path-map.is-cord-edge-hover:is(.is-module-path-hover) .intro-connectors__layer--sheen [data-cord-edge]:not(.is-path-highlight) .intro-cord-rope--sheen {
-  opacity: 0.28;
-}
-
+/* Hover — dim other lanes; accent glow on the highlighted route */
 html[data-skin='corporate']
   .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
   .intro-connectors__layer--body
   [data-cord-edge]:not(.is-path-highlight)
   .intro-cord-rope--body {
-  opacity: 0.34;
+  opacity: 0.38;
   transition: opacity 0.28s cubic-bezier(0.22, 1, 0.32, 1);
-}
-
-html[data-skin='corporate']
-  .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
-  .intro-connectors__layer--shadow
-  [data-cord-edge]:not(.is-path-highlight)
-  .intro-cord-rope--shadow,
-html[data-skin='corporate']
-  .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
-  .intro-connectors__layer--sheen
-  [data-cord-edge]:not(.is-path-highlight)
-  .intro-cord-rope--sheen {
-  opacity: 0.42;
-  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.32, 1);
-}
-
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-cord.is-path-highlight .intro-cord-rope--shadow {
-  stroke: rgba(255, 255, 255, 0.34);
-  stroke-width: 18;
-  opacity: 1;
-  filter: drop-shadow(
-    0 0 18px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 65%, transparent)
-  );
 }
 
 html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-cord.is-path-highlight .intro-cord-rope--body {
   stroke: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 92%, #ffffff);
-  stroke-width: 12;
-  filter: drop-shadow(
-    0 0 20px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 78%, transparent)
-  );
-}
-
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-cord.is-path-highlight .intro-cord-rope--sheen {
-  stroke: rgba(255, 255, 255, 0.85);
-  stroke-width: 2.75;
+  stroke-width: 6.5;
   opacity: 1;
+  filter: drop-shadow(
+    0 0 14px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 72%, transparent)
+  );
 }
 
 html[data-skin='corporate']
   .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
   .intro-cord.is-path-highlight:not(.is-filled)
   .intro-cord-rope--body {
-  stroke: rgba(255, 255, 255, 0.68);
+  stroke: rgba(255, 255, 255, 0.72);
   filter: drop-shadow(
-    0 0 16px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 55%, transparent),
-    0 0 8px rgba(255, 255, 255, 0.5)
+    0 0 12px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 48%, transparent)
   );
 }
 
@@ -2516,9 +2648,7 @@ html[data-skin='space'] .intro-path-map.is-replay-outcome-active .intro-path-hov
   pointer-events: none;
 }
 
-html[data-skin='corporate'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--shadow,
 html[data-skin='corporate'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--body,
-html[data-skin='corporate'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--sheen,
 html[data-skin='space'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--shadow,
 html[data-skin='space'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--body,
 html[data-skin='space'] .intro-path-map.is-replay-outcome-active .intro-cord.is-path-highlight .intro-cord-rope--sheen {
@@ -2530,7 +2660,6 @@ html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .i
   animation: intro-cord-replay-outcome-pulse 1.35s ease-in-out infinite;
 }
 
-html[data-skin='corporate'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--sheen,
 html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--sheen {
   animation: intro-cord-replay-outcome-pulse-sheen 1.35s ease-in-out infinite;
 }
@@ -2539,15 +2668,15 @@ html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .i
   0%,
   100% {
     filter: drop-shadow(
-      0 0 12px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 45%, transparent)
+      0 0 8px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 42%, transparent)
     );
-    stroke-width: 10;
+    stroke-width: 3.5;
   }
   50% {
     filter: drop-shadow(
-      0 0 26px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 82%, transparent)
+      0 0 18px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 78%, transparent)
     );
-    stroke-width: 13;
+    stroke-width: 4.5;
   }
 }
 
@@ -2563,7 +2692,6 @@ html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .i
 
 @media (prefers-reduced-motion: reduce) {
   html[data-skin='corporate'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--body,
-  html[data-skin='corporate'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--sheen,
   html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--body,
   html[data-skin='space'] .intro-cord--subway.is-filled.is-replay-outcome-pulse .intro-cord-rope--sheen {
     animation: none;
@@ -2656,19 +2784,20 @@ html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highl
   z-index: 13;
 }
 
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-source .module-card,
-html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-source .module-card {
-  transform: scale(1.03);
-  filter: brightness(1.04);
+/* During path hover, only the focused chapter card scales — not siblings */
+html[data-skin='corporate']
+  .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
+  .intro-module-wrap:not(.is-path-hover-focus)
+  .module-card:not(.locked):hover,
+html[data-skin='space']
+  .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
+  .intro-module-wrap:not(.is-path-hover-focus)
+  .module-card:not(.locked):hover {
+  transform: none;
+  filter: none;
   box-shadow:
     0 0 2.5px rgba(0, 0, 0, 0.08),
-    0 10px 22px rgba(0, 0, 0, 0.2),
-    0 0 16px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 28%, transparent);
-}
-
-html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-dim .module-card {
-  transform: scale(0.98);
-  filter: brightness(0.98) saturate(0.98);
+    0 6px 14px rgba(0, 0, 0, 0.08);
 }
 
 html[data-skin='corporate']
@@ -2678,6 +2807,11 @@ html[data-skin='corporate']
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html[data-skin='corporate'] .intro-path-map:not(.is-path-pan-dragging) .intro-module-wrap .module-card:not(.locked):hover,
+  html[data-skin='space'] .intro-path-map:not(.is-path-pan-dragging) .intro-module-wrap .module-card:not(.locked):hover {
+    transform: translate3d(0, -1px, 0) scale(1.01);
+  }
+
   html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap .module-card {
     transition: filter 0.15s ease;
   }
@@ -2708,8 +2842,10 @@ html[data-skin='corporate']
       0 10px 26px rgba(0, 0, 0, 0.26);
   }
 
-  html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-source .module-card,
-  html[data-skin='corporate'] .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent) .intro-module-wrap.is-path-hover-dim .module-card {
+  html[data-skin='corporate']
+    .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
+    .intro-module-wrap.is-path-hover-source
+    .module-card {
     transform: none;
   }
 }
@@ -2736,8 +2872,80 @@ html[data-skin='corporate'] .intro-next-chapter {
   border-color: #e5e7eb;
 }
 
-/* Pop-in sequence (hero, nav, leaderboard — not module opacity) */
-html[data-skin='corporate'] .intro-corporate-board.is-pop-pending .intro-corporate-pop-target:not(.intro-module-wrap) {
+/* Intro director — JS tweens only; legacy pop hidden rules must not fight inline/WAAPI */
+html[data-skin='corporate'] .intro-corporate-board.is-intro-director.is-pop-pending .intro-corporate-pop-target,
+html[data-skin='corporate'] .intro-corporate-board.is-intro-director.is-pop-pending .intro-module-wrap {
+  transition: none !important;
+}
+
+html[data-skin='corporate']
+  .intro-corporate-board.is-intro-director.is-pop-pending:not(.is-pop-complete)
+  .intro-corporate-pop-target:not(.intro-module-wrap):not(.is-pop-visible),
+html[data-skin='corporate']
+  .intro-corporate-board.is-intro-director.is-pop-pending.is-path-pop-active
+  .intro-module-wrap.intro-corporate-pop-target:not(.is-pop-visible) {
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+}
+
+html[data-skin='corporate']
+  .intro-corporate-board.is-intro-director.is-pop-pending
+  .intro-corporate-pop-target.is-pop-visible,
+html[data-skin='corporate']
+  .intro-corporate-board.is-intro-director.is-pop-pending
+  .intro-module-wrap.is-pop-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Pop-in sequence — copy → path map → side column cards → volume nav */
+html[data-skin='corporate'] .intro-corporate-board__copy.intro-corporate-pop-target {
+  transform-origin: top left;
+}
+
+html[data-skin='corporate'] .intro-corporate-nav__connector.intro-corporate-pop-target {
+  transform-origin: center center;
+}
+
+/* Phase 2 — path map hidden until chapter cascade */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending:not(.is-path-pop-active) .intro-corporate-board__path {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-corporate-board__path {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Phase 3 — side column shell visible; inner cards pop one-by-one */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending:not(.is-side-pop-active) > .intro-corporate-board__body > .intro-corporate-leaderboard-panel {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-side-pop-active > .intro-corporate-board__body > .intro-corporate-leaderboard-panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Side intro — skip backdrop-filter while fading in (restored when tween ends) */
+html[data-skin='corporate'] .intro-corporate-board.is-intro-side-tweening .intro-corporate-player-profile,
+html[data-skin='corporate'] .intro-corporate-board.is-intro-side-tweening .intro-corporate-activity,
+html[data-skin='corporate'] .intro-corporate-board.is-intro-side-tweening .intro-corporate-leaderboard {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: var(--side-card-glass-solid, rgba(18, 24, 32, 0.92)) !important;
+}
+
+html[data-skin='corporate']
+  .intro-corporate-board.is-pop-pending:not(.is-intro-director)
+  .intro-corporate-pop-target:not(.intro-module-wrap) {
   opacity: 0;
   transform: translate3d(0, 16px, 0) scale(0.97);
   transition:
@@ -2751,11 +2959,18 @@ html[data-skin='corporate'] .intro-corporate-pop-target:not(.intro-module-wrap).
   transform: translate3d(0, 0, 0) scale(1);
 }
 
-/* Modules: always opaque; pop-in is transform-only so cards stay visible */
-html[data-skin='corporate'] .intro-corporate-board.is-pop-pending .intro-module-wrap.intro-corporate-pop-target {
-  opacity: 1;
-  transform: translate3d(0, 16px, 0) scale(0.97);
-  transition: transform var(--corporate-pop-dur) var(--corporate-pop-ease);
+/* Path map chapters — hidden until path cascade; one card at a time */
+html[data-skin='corporate']
+  .intro-corporate-board.is-pop-pending:not(.is-intro-director):not(.is-path-pop-active)
+  .intro-module-wrap.intro-corporate-pop-target,
+html[data-skin='corporate']
+  .intro-corporate-board.is-pop-pending:not(.is-intro-director).is-path-pop-active
+  .intro-module-wrap.intro-corporate-pop-target:not(.is-pop-visible) {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0) scale(0.94);
+  transition:
+    opacity var(--corporate-pop-dur) var(--corporate-pop-ease),
+    transform var(--corporate-pop-dur) var(--corporate-pop-ease);
 }
 
 html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-module-wrap.intro-corporate-pop-target,
@@ -2781,18 +2996,34 @@ html[data-skin='corporate'] .intro-corporate-board.is-pop-pending:not(.is-pop-co
   opacity: 0 !important;
 }
 
-html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord:not(.is-intro-revealed) {
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord:not(.is-intro-revealed):not(.is-intro-line-growing):not(.is-tube-flowing) {
   opacity: 0 !important;
   pointer-events: none;
 }
 
-html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord.is-intro-revealed {
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord.is-intro-revealed,
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord.is-intro-line-growing,
+html[data-skin='corporate'] .intro-corporate-board.is-pop-pending.is-path-pop-active .intro-cord.is-tube-flowing,
+html[data-skin='corporate'] .intro-cord.is-tube-flowing {
   opacity: 1 !important;
+  pointer-events: auto;
+}
+
+html[data-skin='corporate'] .intro-cord--subway.is-intro-line-growing .intro-cord-rope--body,
+html[data-skin='corporate'] .intro-cord--subway.is-tube-flowing .intro-cord-rope--body {
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-cord,
 html[data-skin='corporate'] .intro-viewport.is-modules-visible .intro-cord {
   opacity: 1;
+}
+
+/* Pathways stay visible after intro (no dash-hide on unfilled edges after remeasure) */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-cord--subway .intro-cord-rope--body {
+  stroke-dasharray: none !important;
+  stroke-dashoffset: 0 !important;
 }
 
 html[data-skin='corporate'] .intro-corporate-nav__item.is-complete:not(.is-active),
@@ -3166,28 +3397,40 @@ html[data-skin='corporate'].wf-layout-hidden-copy .intro-corporate-board__path {
   min-height: 0;
 }
 
-/* Recovery — main column + path must stay visible (layout-cheat can hide them via sessionStorage) */
-html[data-skin='corporate'] .intro-corporate-board__main {
+/* Recovery — after intro or during path act; must not override act 0–1 hide rules */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-corporate-board__main,
+html[data-skin='corporate'] .intro-corporate-board.is-path-pop-active .intro-corporate-board__main {
   display: flex !important;
   visibility: visible !important;
   flex: 1 1 auto !important;
   min-height: 0 !important;
 }
 
-html[data-skin='corporate'] #modules.intro-corporate-board__path,
-html[data-skin='corporate'] .intro-corporate-board__path.intro-modules {
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete #modules.intro-corporate-board__path,
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-corporate-board__path.intro-modules,
+html[data-skin='corporate'] .intro-corporate-board.is-path-pop-active #modules.intro-corporate-board__path,
+html[data-skin='corporate'] .intro-corporate-board.is-path-pop-active .intro-corporate-board__path.intro-modules {
   display: flex !important;
   visibility: visible !important;
   flex: 1 1 0 !important;
-  min-height: min(38vh, 28rem) !important;
+  min-height: 0 !important;
 }
 
-html[data-skin='corporate'] #intro-columns .intro-module-wrap {
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete #intro-columns .intro-module-wrap,
+html[data-skin='corporate']
+  .intro-corporate-board.is-path-pop-active
+  #intro-columns
+  .intro-module-wrap.is-pop-visible {
   opacity: 1 !important;
   --module-opacity: 1 !important;
   visibility: visible !important;
 }
 
-html[data-skin='corporate'] #intro-columns .intro-module-wrap .module-card {
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete #intro-columns .intro-module-wrap .module-card,
+html[data-skin='corporate']
+  .intro-corporate-board.is-path-pop-active
+  #intro-columns
+  .intro-module-wrap.is-pop-visible
+  .module-card {
   visibility: visible !important;
 }

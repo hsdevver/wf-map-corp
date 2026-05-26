@@ -8,7 +8,7 @@ import {
  * Shared consequence-flow graph (workflow-intro + flow-map).
  * Bump FLOW_GRAPH_BUILD when changing module topology (cache-bust ?v= on imports).
  */
-export const FLOW_GRAPH_BUILD = 'flow-wiring-cheat-v1';
+export const FLOW_GRAPH_BUILD = 'flow-wiring-3b-4a-v2';
 
 /**
  * Volume 1 — classic split (3A / 3B) → convergence (4) → hub (5).
@@ -694,9 +694,10 @@ export const CHAPTER_3_CORD_ANCHORS = {
   'c3m3b|c3m4a': {
     from: 'right',
     to: 'left',
-    fromAlong: SUBWAY_JUNCTION_ALONG.upper,
+    /** Mirror of 3A→4B (upper→center): center row branches up to 4A. */
+    fromAlong: SUBWAY_JUNCTION_ALONG.center,
     toAlong: SUBWAY_JUNCTION_ALONG.upper,
-    /** Lane 2 — separate gutter trunk from 3A→4A (lane 0) so the upward branch stays visible. */
+    /** Lane 2 — gutter trunk beside 3A→4A (0) and 3B→4B (1). */
     subwayLane: 2,
     slack: 1.1,
     sagSign: -1

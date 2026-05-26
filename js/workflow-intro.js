@@ -1,4 +1,4 @@
-import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js';
+import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js?v=corp-16';
 import { getPathHighlightMode, resetCorporateDashboardLayout } from './layout-cheat.js';
 import {
   getRecentActivityModuleIds,
@@ -10,6 +10,8 @@ import { initAmbientMusicSync, initAmbientPlayback } from './ambient-music.js?v=
 import {
   anchorFromRect,
   applySubwayLaneBundles,
+  applyFlexStackCordAlignment,
+  applyCorporateSubwayLaneLayout,
   applySubwayMidXLanes,
   applySubwayClearOfCards,
   SUBWAY_MID_LANE_PITCH,
@@ -35,7 +37,15 @@ import {
   getChapterAriaLabel,
   getPathRouteVariants,
   MODULE_SKILL_FOCUS
-} from './consequence-flow.js?v=flow-wiring-cheat-v1';
+} from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
+import { initFlowWiringCheat } from './flow-wiring-cheat.js?v=flow-wiring-3b-4a-v2';
+import {
+  isPathGridFlexLayout,
+  pathGridEffectiveRowCount,
+  PATH_GRID_SPINE_ROW
+} from './path-grid-layout.js';
+import { ensurePathMapEdgeBlur, syncPathMapEdgeBlur } from './path-map-edge-blur.js';
+import { isPathLaneFitRows } from './path-lane-framing.js';
 import {
   applyPlayOutcome,
   beginChapter2,
@@ -62,13 +72,28 @@ import {
 } from './consequence-progress.js';
 import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js';
 import {
+  applyIntroInitialHiddenState,
+  cancelIntroDirector,
+  forceRevealIntroElements,
+  introIsPlaying,
+  playIntro
+} from './corporate-intro-director.js';
+import {
+  animateTubeDraw,
+  cordHostsForSegment,
+  createTubeDrawJob,
+  markCordTubeHosts,
+  setTubeHidden,
+  tubeFlowPointAt
+} from './cord-tube-draw.js';
+import {
   applyFolderChrome,
   createModuleThumbLabel,
   getModuleLayout,
   refreshFolderChrome,
   syncModuleThumbLabel
 } from './module-layout.js';
-import { playModuleHoverClick } from './ui-sounds.js';
+import { bindModuleCardHoverSound, playModuleHoverClick } from './ui-sounds.js';
 
 /** Subtle tilt/offset per cell — grid slots, satellite scatter feel */
 const INTRO_MODULE_SCATTER = {
@@ -203,6 +228,49 @@ function syncCorporatePathMapToCatalog() {
   }
 }
 
+/** Flex layout: stack branch columns with strict row gap, centered in the grid column. */
+function applyFlexCenteredBranchStacks(byColumn) {
+  byColumn.forEach((colMods, column) => {
+    const col = Number(column);
+    if (colMods.length < 2) {
+      const mod = colMods[0];
+      if (!mod) return;
+      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+      if (!wrap) return;
+      wrap.classList.add('intro-module-wrap--solo');
+      wrap.style.gridColumn = String(col);
+      wrap.style.gridRow = '1';
+      wrap.style.alignSelf = 'center';
+      wrap.dataset.pathRow = String(mod.row);
+      return;
+    }
+
+    const stack = document.createElement('div');
+    stack.className = 'intro-path-stack intro-path-stack--branch';
+    stack.dataset.pathColumn = String(col);
+    stack.style.gridColumn = String(col);
+    stack.style.gridRow = '1';
+    stack.style.alignSelf = 'center';
+
+    const sorted = [...colMods].sort((a, b) => a.row - b.row);
+    for (const mod of sorted) {
+      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+      if (!wrap) continue;
+      wrap.classList.remove(
+        'intro-module-wrap--stacked',
+        'intro-module-wrap--stack-top',
+        'intro-module-wrap--stack-bottom',
+        'intro-module-wrap--solo'
+      );
+      wrap.style.gridColumn = '';
+      wrap.style.gridRow = '';
+      wrap.dataset.pathRow = String(mod.row);
+      stack.appendChild(wrap);
+    }
+    gridEl.appendChild(stack);
+  });
+}
+
 /** Place each module on its graph row/column so forks align across the grid (reference layout). */
 function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
   if ((!isCorporateSkin() && !isSpaceSkin()) || !gridEl) return;
@@ -211,6 +279,7 @@ function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
   dissolveCorporatePathStacks();
 
   const modules = getRuntimeModules();
+  const flexCentered = isPathGridFlexLayout();
   const byColumn = new Map();
   modules.forEach((mod) => {
     if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
@@ -224,19 +293,37 @@ function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
     gridEl.style.gridTemplateColumns = `repeat(${maxCol}, minmax(0, 1fr))`;
   }
 
-  modules.forEach((mod) => {
-    const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
-    if (!wrap) return;
-    wrap.classList.remove(
-      'intro-module-wrap--stacked',
-      'intro-module-wrap--stack-top',
-      'intro-module-wrap--stack-bottom'
-    );
-    wrap.classList.add('intro-module-wrap--solo');
-    wrap.style.gridColumn = String(mod.column);
-    wrap.style.gridRow = String(mod.row);
-    wrap.dataset.pathRow = String(mod.row);
-  });
+  gridEl.classList.toggle('is-path-grid-flex', flexCentered);
+  pathMapEl?.classList.toggle('is-path-grid-flex', flexCentered);
+
+  if (flexCentered) {
+    modules.forEach((mod) => {
+      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+      if (!wrap) return;
+      wrap.classList.remove(
+        'intro-module-wrap--stacked',
+        'intro-module-wrap--stack-top',
+        'intro-module-wrap--stack-bottom'
+      );
+      wrap.style.gridColumn = String(mod.column);
+      wrap.style.gridRow = '';
+    });
+    applyFlexCenteredBranchStacks(byColumn);
+  } else {
+    modules.forEach((mod) => {
+      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+      if (!wrap) return;
+      wrap.classList.remove(
+        'intro-module-wrap--stacked',
+        'intro-module-wrap--stack-top',
+        'intro-module-wrap--stack-bottom'
+      );
+      wrap.classList.add('intro-module-wrap--solo');
+      wrap.style.gridColumn = String(mod.column);
+      wrap.style.gridRow = String(mod.row);
+      wrap.dataset.pathRow = String(mod.row);
+    });
+  }
 
   const rowSpread =
     modules.length > 0
@@ -270,8 +357,8 @@ const PATH_CARD_MIN_PX = 72;
 /** Corporate chapter cards — match vol 1–2 linear lane (~11rem). */
 const PATH_CORPORATE_CHAPTER_CARD_MAX_PX = 176;
 const PATH_FOCUS_COLUMN_COUNT = 5;
-/** Fraction of column 6 visible at lane zoom (five full columns + ~10% of col. 6). */
-const PATH_OVERVIEW_COLUMN_PEEK = 0.1;
+/** Lane zoom shows exactly five full columns (no trailing peek). */
+const PATH_OVERVIEW_COLUMN_PEEK = 0;
 const PATH_LATE_FOCUS_START_COL = 3;
 const PATH_COLUMN_AFTER_CH3 = 4;
 const PATH_COLUMN_OVERVIEW_MS = 2250;
@@ -304,7 +391,7 @@ let pathColumnRevealTimer = 0;
 let pathColumnRevealRunId = 0;
 /** @type {'idle' | 'overview' | 'focus' | 'revealing'} */
 let pathColumnRevealPhase = 'idle';
-/** 0 = entire flow, PATH_ZOOM_LANE_LEVEL = five cols + peek, 1 = max focus. */
+/** 0 = entire flow, PATH_ZOOM_LANE_LEVEL = five columns, 1 = max focus. */
 let pathZoomLevel = 0;
 /** @type {{ mapSize: number, laneSize: number, focusSize: number, panMap: number, panLane: number, panFocus: number, panFocusEarly: number, panFocusLate: number, focusStartCol: number, focusEndCol: number } | null} */
 let pathRevealBounds = null;
@@ -315,8 +402,10 @@ let pathFocusPanAnimRunId = 0;
 let pathFocusPanAnimating = false;
 let pathZoomControlsWired = false;
 let pathPanDragWired = false;
-/** Current stage translateX (map-local). */
+/** Current stage translate (map-local). */
 let pathStagePanX = 0;
+let pathStagePanY = 0;
+let pathPanFollowAnimRunId = 0;
 
 function getPathColumnCount(modules = getRuntimeModules()) {
   if (!modules.length) return 1;
@@ -381,20 +470,23 @@ function measurePathLayoutBox() {
   if (modulesH < 48 && modulesRect.width < 48) return null;
 
   const pathStyle = getComputedStyle(pathMapEl);
-  const pathPadY = parseFloat(pathStyle.paddingTop) + parseFloat(pathStyle.paddingBottom);
   const gridStyle = getComputedStyle(gridEl);
   const gridPadY = parseFloat(gridStyle.paddingTop) + parseFloat(gridStyle.paddingBottom);
   const gridPadX = parseFloat(gridStyle.paddingLeft) + parseFloat(gridStyle.paddingRight);
   const gridPadL = parseFloat(gridStyle.paddingLeft) || 0;
+
+  const stage = ensurePathMapStage();
+  const stageH = stage?.clientHeight || modulesH;
+  const laneH = Math.max(modulesH, stageH);
 
   const modules = getRuntimeModules();
   if (!modules.length) return null;
 
   return {
     modulesEl,
-    availH: Math.max(0, modulesH - pathPadY - gridPadY),
+    availH: Math.max(0, laneH - gridPadY),
     availW: measurePathVisibleWidth(modulesEl, gridPadX),
-    maxRow: Math.max(1, ...modules.map((m) => m.row)),
+    maxRow: pathGridEffectiveRowCount(modules),
     maxCol: Math.max(1, ...modules.map((m) => m.column)),
     colGap: parseFloat(gridStyle.columnGap) || 0,
     rowGap: parseFloat(gridStyle.rowGap) || 0,
@@ -441,22 +533,35 @@ function computePathCardSize(
   return clampPathCardSizePx(cardSize);
 }
 
-/** Same chapter card size as vol 1–2 (width + row fit, capped to the linear-lane standard). */
-function computeCorporateChapterCardSize(box) {
-  const sized = computePathCardSize(box, pathDashboardColumnBudget(box));
-  const rowFit = box.maxRow > 1 && !box.isLinear ? computePathRowFitCardSize(box) : sized;
-  return clampPathCardSizePx(
-    Math.min(sized, rowFit, PATH_CORPORATE_CHAPTER_CARD_MAX_PX)
-  );
+/** Lane card size from width budget (five columns) and optional row-fit cap. */
+function computePathLaneCardSize(box) {
+  const visibleCols = PATH_FOCUS_COLUMN_COUNT + PATH_OVERVIEW_COLUMN_PEEK;
+  const cardFromWidth =
+    (box.availW - (visibleCols - 1) * box.colGap) / visibleCols;
+  let cardSize = clampPathCardSizePx(cardFromWidth);
+
+  if (isPathLaneFitRows() && box.maxRow > 1 && !box.isLinear) {
+    cardSize = clampPathCardSizePx(Math.min(cardSize, computePathRowFitCardSize(box)));
+    return cardSize;
+  }
+
+  const standard = computeCorporateChapterCardSize(box);
+  return clampPathCardSizePx(Math.min(cardSize, standard));
 }
 
-/** Lane zoom — slightly wider framing than focus (5 cols + peek), never larger than standard cards. */
+/** Same chapter card size as vol 1–2 (width + row fit, capped to the linear-lane standard). */
+function computeCorporateChapterCardSize(box) {
+  if (isPathLaneFitRows() && box.maxRow > 1 && !box.isLinear) {
+    const widthCap = computePathCardSize(box, pathDashboardColumnBudget(box), { widthOnly: true });
+    return clampPathCardSizePx(Math.min(widthCap, computePathRowFitCardSize(box)));
+  }
+  const widthSized = computePathCardSize(box, pathDashboardColumnBudget(box), { widthOnly: true });
+  return clampPathCardSizePx(Math.min(widthSized, PATH_CORPORATE_CHAPTER_CARD_MAX_PX));
+}
+
+/** Lane zoom — five full columns in the path lane (or row-fit when cheat mode is on). */
 function computePathOverviewCardSize(box) {
-  const standard = computeCorporateChapterCardSize(box);
-  const cardFromWidth =
-    (box.availW - (PATH_FOCUS_COLUMN_COUNT - 1) * box.colGap) /
-    (PATH_FOCUS_COLUMN_COUNT + PATH_OVERVIEW_COLUMN_PEEK);
-  return clampPathCardSizePx(Math.min(cardFromWidth, standard));
+  return computePathLaneCardSize(box);
 }
 
 /** Max zoom-in uses the same chapter size as vol 1–2. */
@@ -464,9 +569,10 @@ function computePathRevealFocusSize(box) {
   return computeCorporateChapterCardSize(box);
 }
 
-/** Left-align overview so columns 1–5 are full width and column 6 only peeks in. */
-function computePathOverviewPanX() {
-  return 0;
+/** Lane pan — flush left when the whole graph fits; otherwise center columns 1–5. */
+function computePathOverviewPanX(box, cardSize) {
+  if (box.maxCol <= PATH_FOCUS_COLUMN_COUNT) return 0;
+  return computePathFocusPanX(box, cardSize, 1, PATH_FOCUS_COLUMN_COUNT);
 }
 
 function computePathFocusPanX(box, cardSize, startCol = 1, endCol = PATH_FOCUS_COLUMN_COUNT) {
@@ -521,16 +627,25 @@ function applyPathGridCardSize(box, cardSize) {
     gridEl.style.removeProperty('max-height');
     gridEl.style.removeProperty('min-height');
     gridEl.style.gridTemplateRows = `repeat(${box.maxRow}, ${cardSize}px)`;
+    pathMapEl.classList.remove('is-path-stage-fill');
+    gridEl.classList.remove('is-path-grid-fill');
   } else {
-    const gridH = box.maxRow * cardSize + (box.maxRow - 1) * box.rowGap;
-    gridEl.style.height = `${gridH}px`;
-    gridEl.style.maxHeight = `${gridH}px`;
-    gridEl.style.minHeight = `${gridH}px`;
-    gridEl.style.gridTemplateRows = `repeat(${box.maxRow}, ${cardSize}px)`;
+    const contentH = box.maxRow * cardSize + (box.maxRow - 1) * box.rowGap;
+    gridEl.style.height = `${contentH}px`;
+    gridEl.style.maxHeight = `${contentH}px`;
+    gridEl.style.minHeight = `${contentH}px`;
+    if (gridEl.classList.contains('is-path-grid-flex')) {
+      gridEl.style.gridTemplateRows = `${contentH}px`;
+    } else {
+      gridEl.style.gridTemplateRows = `repeat(${box.maxRow}, ${cardSize}px)`;
+    }
+    pathMapEl.classList.remove('is-path-stage-fill');
+    gridEl.classList.remove('is-path-grid-fill');
     gridEl.style.removeProperty('--card-size');
   }
 
   applyPathGridColumnTracks(box, cardSize);
+  if (isCorporateSkin()) syncPathMapEdgeBlur(pathMapEl);
 }
 
 /**
@@ -552,8 +667,9 @@ function applyPathGridColumnTracks(box, cardSize) {
   gridEl.style.justifyContent = 'start';
 }
 
-/** Pan when the grid is narrower than the path lane (centers wide branching maps). */
+/** Pan when the grid is narrower than the path lane (corporate: flush left in the stage). */
 function computePathGridCenterPan(box, cardSize) {
+  if (isCorporateSkin() || isSpaceSkin()) return 0;
   const totalW = getPathGridWidth(box, cardSize);
   if (totalW >= box.availW - 2) return 0;
   return (box.availW - totalW) * 0.5;
@@ -571,6 +687,15 @@ function getPathGridWidth(box, cardSize) {
   return box.gridPadL + box.maxCol * cardSize + (box.maxCol - 1) * box.colGap + gridPadR;
 }
 
+function getPathGridTotalHeight(box, cardSize) {
+  if (!gridEl) return box.maxRow * cardSize + (box.maxRow - 1) * box.rowGap;
+  const gridStyle = getComputedStyle(gridEl);
+  const padY =
+    (parseFloat(gridStyle.paddingTop) || 0) + (parseFloat(gridStyle.paddingBottom) || 0);
+  const contentH = box.maxRow * cardSize + (box.maxRow - 1) * box.rowGap;
+  return contentH + padY;
+}
+
 /** Horizontal pan limits when the grid is wider than the viewport. */
 function getPathPanRange(box, cardSize) {
   const overflow = getPathGridWidth(box, cardSize) - box.availW;
@@ -578,16 +703,45 @@ function getPathPanRange(box, cardSize) {
   return { min: box.availW - getPathGridWidth(box, cardSize), max: 0 };
 }
 
-function clampPathStagePan(panX, box, cardSize) {
+/** Vertical pan limits when the grid is taller than the viewport (five-column zoom). */
+function getPathPanRangeY(box, cardSize) {
+  const overflow = getPathGridTotalHeight(box, cardSize) - box.availH;
+  if (overflow <= 2) return { min: 0, max: 0 };
+  return { min: box.availH - getPathGridTotalHeight(box, cardSize), max: 0 };
+}
+
+function pathStageHasPanSlack(box, cardSize) {
+  const panX = getPathPanRange(box, cardSize);
+  const panY = getPathPanRangeY(box, cardSize);
+  return panX.max - panX.min > 4 || panY.max - panY.min > 4;
+}
+
+function clampPathStagePanX(panX, box, cardSize) {
   const { min, max } = getPathPanRange(box, cardSize);
   return Math.max(min, Math.min(max, panX));
 }
 
-function setPathMapStageTransform(translateX) {
+function clampPathStagePanY(panY, box, cardSize) {
+  const { min, max } = getPathPanRangeY(box, cardSize);
+  return Math.max(min, Math.min(max, panY));
+}
+
+function clampPathStagePan(panX, box, cardSize) {
+  return clampPathStagePanX(panX, box, cardSize);
+}
+
+function computePathGridCenterPanY(box, cardSize) {
+  const { min, max } = getPathPanRangeY(box, cardSize);
+  if (max - min < 2) return 0;
+  return (min + max) * 0.5;
+}
+
+function setPathMapStageTransform(translateX, translateY = pathStagePanY) {
   pathStagePanX = translateX;
+  pathStagePanY = translateY;
   const stage = ensurePathMapStage();
   if (!stage) return;
-  stage.style.transform = `translate3d(${translateX}px, 0, 0)`;
+  stage.style.transform = `translate3d(${translateX}px, ${translateY}px, 0)`;
 }
 
 function pathZoomCardSize(bounds, zoomT) {
@@ -614,12 +768,12 @@ function pathZoomPanX(box, bounds, zoomT, cardSize) {
   return lerp(bounds.panLane, panFocus, u);
 }
 
-/** True when the map is zoomed in past “full flow” — lane/focus levels allow horizontal scroll. */
+/** True when zoomed to lane/focus (five columns) — drag/wheel pan, not at full overview. */
 function pathCanManualPan() {
   return (
     isCorporateSkin() &&
     pathNeedsColumnReveal() &&
-    pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD &&
+    pathZoomLevel > PATH_ZOOM_LANE_LEVEL - 0.02 &&
     !pathFocusPanAnimating &&
     pathColumnRevealPhase !== 'revealing'
   );
@@ -650,10 +804,13 @@ function applyPathZoomFromLevel(box, bounds, zoomT, { preservePan = false } = {}
   const cardSize = pathZoomCardSize(bounds, zoomT);
   const zoomPan = pathZoomPanX(box, bounds, zoomT, cardSize);
   const panX = preservePan
-    ? clampPathStagePan(pathStagePanX, box, cardSize)
-    : clampPathStagePan(zoomPan, box, cardSize);
+    ? clampPathStagePanX(pathStagePanX, box, cardSize)
+    : clampPathStagePanX(zoomPan, box, cardSize);
+  const panY = preservePan
+    ? clampPathStagePanY(pathStagePanY, box, cardSize)
+    : clampPathStagePanY(computePathGridCenterPanY(box, cardSize), box, cardSize);
   applyPathGridCardSize(box, cardSize);
-  setPathMapStageTransform(panX);
+  setPathMapStageTransform(panX, panY);
   syncPathZoomPhaseFromLevel();
 }
 
@@ -692,17 +849,40 @@ function onPathMapWheel(e) {
   if (!isCorporateSkin() || !pathNeedsColumnReveal()) return;
 
   const pinch = e.ctrlKey || e.metaKey;
-  if (pathCanManualPan() && !pinch && Math.abs(e.deltaX) > Math.abs(e.deltaY) + 2) {
-    e.preventDefault();
-    e.stopPropagation();
+  if (pathCanManualPan() && !pinch) {
     const box = measurePathLayoutBox();
     const bounds = refreshPathRevealBounds(box);
-    if (!box || !bounds) return;
-    const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
-    setPathMapStageTransform(clampPathStagePan(pathStagePanX - e.deltaX, box, cardSize));
-    refreshSubwayCordGeometry();
-    applyCordRopePaths(cordFloatPhase);
-    return;
+    if (box && bounds) {
+      const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
+      const panXRange = getPathPanRange(box, cardSize);
+      const panYRange = getPathPanRangeY(box, cardSize);
+      const canPanX = panXRange.max - panXRange.min > 4;
+      const canPanY = panYRange.max - panYRange.min > 4;
+
+      if (canPanY && Math.abs(e.deltaY) > Math.abs(e.deltaX) + 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPathMapStageTransform(
+          pathStagePanX,
+          clampPathStagePanY(pathStagePanY - e.deltaY, box, cardSize)
+        );
+        refreshSubwayCordGeometry();
+        applyCordRopePaths(cordFloatPhase);
+        return;
+      }
+
+      if (canPanX && Math.abs(e.deltaX) > Math.abs(e.deltaY) + 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPathMapStageTransform(
+          clampPathStagePanX(pathStagePanX - e.deltaX, box, cardSize),
+          pathStagePanY
+        );
+        refreshSubwayCordGeometry();
+        applyCordRopePaths(cordFloatPhase);
+        return;
+      }
+    }
   }
 
   e.preventDefault();
@@ -720,7 +900,9 @@ function wirePathPanDrag() {
   let dragPointerId = null;
   let dragActive = false;
   let dragStartX = 0;
-  let dragStartPan = 0;
+  let dragStartY = 0;
+  let dragStartPanX = 0;
+  let dragStartPanY = 0;
   let dragBox = null;
   let dragCardSize = 0;
 
@@ -746,9 +928,11 @@ function wirePathPanDrag() {
   const onPathPanMove = (e) => {
     if (e.pointerId !== dragPointerId || !dragBox) return;
     const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
     if (!dragActive) {
-      if (Math.abs(dx) < PATH_PAN_DRAG_THRESHOLD_PX) return;
+      if (Math.hypot(dx, dy) < PATH_PAN_DRAG_THRESHOLD_PX) return;
       dragActive = true;
+      pathPanFollowAnimRunId += 1;
       pathMapEl.classList.add('is-path-pan-dragging');
       try {
         pathMapEl.setPointerCapture(e.pointerId);
@@ -757,7 +941,10 @@ function wirePathPanDrag() {
       }
     }
     e.preventDefault();
-    setPathMapStageTransform(clampPathStagePan(dragStartPan + dx, dragBox, dragCardSize));
+    setPathMapStageTransform(
+      clampPathStagePanX(dragStartPanX + dx, dragBox, dragCardSize),
+      clampPathStagePanY(dragStartPanY + dy, dragBox, dragCardSize)
+    );
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
   };
@@ -798,13 +985,14 @@ function wirePathPanDrag() {
       const bounds = refreshPathRevealBounds(box);
       if (!box || !bounds) return;
       const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
-      const { min, max } = getPathPanRange(box, cardSize);
-      if (max - min < 4) return;
+      if (!pathStageHasPanSlack(box, cardSize)) return;
 
       dragPointerId = e.pointerId;
       dragActive = false;
       dragStartX = e.clientX;
-      dragStartPan = pathStagePanX;
+      dragStartY = e.clientY;
+      dragStartPanX = pathStagePanX;
+      dragStartPanY = pathStagePanY;
       dragBox = box;
       dragCardSize = cardSize;
 
@@ -885,7 +1073,9 @@ function resetPathColumnReveal() {
   pathFocusPanAnimRunId += 1;
   pathFocusPanAnimating = false;
   pathStagePanX = 0;
-  setPathMapStageTransform(0);
+  pathStagePanY = 0;
+  pathPanFollowAnimRunId += 1;
+  setPathMapStageTransform(0, 0);
   pathMapEl?.classList.remove(
     'is-path-pan-dragging',
     'is-path-column-overview',
@@ -900,7 +1090,7 @@ function resetPathColumnReveal() {
   updatePathZoomControls();
 }
 
-/** Wide volumes — map fits all columns; lane shows five + peek; zoom in focuses five. */
+/** Wide volumes — map fits all columns; lane shows five; zoom in focuses five. */
 function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
   if (!box || box.maxCol <= PATH_FOCUS_COLUMN_COUNT) {
     pathRevealBounds = null;
@@ -921,7 +1111,7 @@ function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
     laneSize,
     focusSize,
     panMap: computePathGridCenterPan(box, mapSize),
-    panLane: computePathOverviewPanX(),
+    panLane: computePathOverviewPanX(box, laneSize),
     panFocus: computePathFocusPanX(box, focusSize, window.startCol, window.endCol),
     panFocusEarly: computePathFocusPanX(box, focusSize, 1, PATH_FOCUS_COLUMN_COUNT),
     panFocusLate: computePathFocusPanX(
@@ -976,8 +1166,7 @@ function updatePathColumnRevealClasses() {
   let panEnabled = false;
   if (pathCanManualPan() && box && pathRevealBounds) {
     const cardSize = pathZoomCardSize(pathRevealBounds, pathZoomLevel);
-    const { min, max } = getPathPanRange(box, cardSize);
-    panEnabled = max - min > 4;
+    panEnabled = pathStageHasPanSlack(box, cardSize);
   }
   pathMapEl?.classList.toggle('is-path-pan-enabled', panEnabled);
   if (needs && pathMapEl) {
@@ -1009,7 +1198,10 @@ async function animatePathStagePan(fromPan, toPan, box, cardSize) {
   let lastCordSync = 0;
   await tweenLeaderboard(PATH_FOCUS_PAN_MS, PATH_FOCUS_PAN_EASE, (t) => {
     if (runId !== pathFocusPanAnimRunId) return;
-    setPathMapStageTransform(clampPathStagePan(lerp(fromPan, toPan, t), box, cardSize));
+    setPathMapStageTransform(
+      clampPathStagePanX(lerp(fromPan, toPan, t), box, cardSize),
+      pathStagePanY
+    );
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
     const now = performance.now();
@@ -1046,7 +1238,8 @@ async function animatePathFocusPan(fromPan, toPan, box, bounds) {
     if (runId !== pathFocusPanAnimRunId) return;
     applyPathGridCardSize(box, bounds.focusSize);
     setPathMapStageTransform(
-      clampPathStagePan(lerp(fromPan, toPan, t), box, bounds.focusSize)
+      clampPathStagePanX(lerp(fromPan, toPan, t), box, bounds.focusSize),
+      pathStagePanY
     );
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
@@ -1101,7 +1294,7 @@ function panPathOnHubModuleOpen(mod) {
 
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     applyPathGridCardSize(box, cardSize);
-    setPathMapStageTransform(toPan);
+    setPathMapStageTransform(toPan, pathStagePanY);
     updatePathColumnRevealClasses();
     queueIntroCordLayout();
     return;
@@ -1109,6 +1302,61 @@ function panPathOnHubModuleOpen(mod) {
 
   if (pathFocusPanAnimating) pathFocusPanAnimRunId += 1;
   void animatePathStagePan(fromPan, toPan, box, cardSize);
+}
+
+/** Nudge the stage so a chapter card stays inside the clipped path viewport (focus zoom). */
+async function panPathViewportTowardModule(moduleId) {
+  if (!pathCanManualPan() || pathFocusPanAnimating || !pathMapEl || !gridEl) return;
+
+  const wrap = gridEl.querySelector(`[data-module-anchor="${moduleId}"]`);
+  if (!wrap) return;
+
+  const box = measurePathLayoutBox();
+  const bounds = pathRevealBounds ?? refreshPathRevealBounds(box);
+  if (!box || !bounds) return;
+
+  const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
+  if (!pathStageHasPanSlack(box, cardSize)) return;
+
+  const mapRect = pathMapEl.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  const margin = Math.min(32, cardSize * 0.14);
+  let dx = 0;
+  let dy = 0;
+
+  if (wrapRect.left < mapRect.left + margin) dx = mapRect.left + margin - wrapRect.left;
+  else if (wrapRect.right > mapRect.right - margin) dx = mapRect.right - margin - wrapRect.right;
+  if (wrapRect.top < mapRect.top + margin) dy = mapRect.top + margin - wrapRect.top;
+  else if (wrapRect.bottom > mapRect.bottom - margin) dy = mapRect.bottom - margin - wrapRect.bottom;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+  const targetX = clampPathStagePanX(pathStagePanX + dx, box, cardSize);
+  const targetY = clampPathStagePanY(pathStagePanY + dy, box, cardSize);
+  if (Math.abs(targetX - pathStagePanX) < 1 && Math.abs(targetY - pathStagePanY) < 1) return;
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setPathMapStageTransform(targetX, targetY);
+    queueIntroCordLayout();
+    return;
+  }
+
+  const runId = ++pathPanFollowAnimRunId;
+  const fromX = pathStagePanX;
+  const fromY = pathStagePanY;
+  const FOLLOW_MS = 420;
+  const FOLLOW_EASE = [0.22, 0.03, 0.26, 1];
+
+  await tweenLeaderboard(FOLLOW_MS, FOLLOW_EASE, (t) => {
+    if (runId !== pathPanFollowAnimRunId) return;
+    setPathMapStageTransform(
+      clampPathStagePanX(lerp(fromX, targetX, t), box, cardSize),
+      clampPathStagePanY(lerp(fromY, targetY, t), box, cardSize)
+    );
+    refreshSubwayCordGeometry();
+    applyCordRopePaths(cordFloatPhase);
+  });
+
+  if (runId === pathPanFollowAnimRunId) queueIntroCordLayout();
 }
 
 /** Pan focus window when progress reaches chapter 4+ on a wide volume. */
@@ -1167,7 +1415,7 @@ function schedulePathColumnReveal() {
     applyPathRevealOverview(box, bounds);
   } else {
     updatePathColumnRevealClasses();
-    setPathMapStageTransform(0);
+    setPathMapStageTransform(0, 0);
   }
   updatePathColumnRevealClasses();
   updatePathZoomControls();
@@ -1259,7 +1507,7 @@ function applyCorporatePathFallbackSizing() {
   const modules = getRuntimeModules();
   if (!modules.length) return;
 
-  const maxRow = Math.max(1, ...modules.map((m) => m.row));
+  const maxRow = pathGridEffectiveRowCount(modules);
   const maxCol = Math.max(1, ...modules.map((m) => m.column));
   const colGap = 16;
   const rowGap = 16;
@@ -1276,7 +1524,8 @@ function applyCorporatePathFallbackSizing() {
   gridEl.style.width = `${gridW}px`;
   gridEl.style.minWidth = `${gridW}px`;
   pathMapEl.style.setProperty('--path-viewport-height', `${Math.max(gridH, 200)}px`);
-  setPathMapStageTransform(0);
+  pathStagePanY = 0;
+  setPathMapStageTransform(0, 0);
 }
 
 /** Fit #intro-columns to remaining main-column height; scale chapter cards to match. */
@@ -1303,7 +1552,8 @@ function syncCorporatePathViewport() {
         ? computePathGridCenterPan(box, cardSize)
         : computePathFocusPanX(box, cardSize, window.startCol, window.endCol);
     pathStagePanX = panX;
-    setPathMapStageTransform(panX);
+    pathStagePanY = 0;
+    setPathMapStageTransform(panX, 0);
     return;
   }
 
@@ -1381,6 +1631,8 @@ const DIAMOND_SVG =
 const PADLOCK_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="lock-shackle" fill="none" stroke="currentColor" stroke-width="2" d="M8 11V8a4 4 0 0 1 8 0v3"/><rect class="lock-body" fill="currentColor" x="5" y="11" width="14" height="9" rx="2"/></svg>';
 
+const PADLOCK_UNLOCK_MS = 520;
+
 /** Intro timeline 0→1 — auto-play and scroll scrub share this. */
 const INTRO_SPACE = {
   heroEnd: 0.1,
@@ -1446,17 +1698,52 @@ const introState = {
 };
 
 let corporatePopRun = 0;
+let introCordBuildAllowed = false;
 
-const CORPORATE_POP = {
-  stepMs: 420,
-  navStaggerMs: 110,
-  copyStaggerMs: 200,
-  moduleStaggerMs: 150,
-  cordGrowMs: 560,
-  sideStaggerMs: 170,
-  lbRowStaggerMs: 32,
-  lbRowCap: 10
-};
+/** True while the opening cascade is running (refresh / first paint). */
+function isCorporateIntroPlaying() {
+  return introIsPlaying;
+}
+
+/** Wait for N animation frames (layout + transition start). */
+function waitFrames(frameCount = 1) {
+  return new Promise((resolve) => {
+    let left = frameCount;
+    const tick = () => {
+      if (--left <= 0) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/** Wait until a pop target finishes its scale/slide transition (one beat at a time). */
+function waitForCorporatePopTransition(el, { timeoutMs = 580 } = {}) {
+  return new Promise((resolve) => {
+    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      el.removeEventListener('transitionend', onEnd);
+      window.clearTimeout(fallback);
+      resolve();
+    };
+
+    const onEnd = (event) => {
+      if (event.target !== el) return;
+      if (event.propertyName !== 'transform' && event.propertyName !== 'opacity') return;
+      finish();
+    };
+
+    el.addEventListener('transitionend', onEnd);
+    const fallback = window.setTimeout(finish, timeoutMs);
+  });
+}
 
 const CORPORATE_VOLUME_COPY = {
   1: {
@@ -2263,7 +2550,7 @@ async function revealCorporateVolume3Modules() {
       introState.moduleSoundsPlayed.add(mod.id);
       playModuleHoverClick({ bypassThrottle: true });
     }
-    await delayMs(CORPORATE_POP.moduleStaggerMs);
+    await waitForCorporatePopTransition(wrap);
   }
 }
 
@@ -2331,13 +2618,11 @@ async function runCorporateVolume3Handoff() {
 function bootstrapCorporateChapter2View() {
   const board = document.getElementById('intro-corporate-board');
   if (!board || !gridEl) return;
+  tagCorporatePopTargets();
+  forceRevealIntroElements(board, gridEl);
   introState.complete = true;
   viewport?.classList.add('is-chapter-2-active', 'is-chapter-settled', 'is-modules-visible');
   finishCorporateHandoffContent();
-  getRuntimeModules().forEach((mod) => {
-    gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed', 'is-pop-visible');
-  });
-  board.classList.add('is-pop-complete');
   startCordFloat();
   queueIntroCordLayout();
 }
@@ -2345,13 +2630,11 @@ function bootstrapCorporateChapter2View() {
 function bootstrapCorporateChapter3View() {
   const board = document.getElementById('intro-corporate-board');
   if (!board || !gridEl) return;
+  tagCorporatePopTargets();
+  forceRevealIntroElements(board, gridEl);
   introState.complete = true;
   viewport?.classList.add('is-chapter-settled', 'is-modules-visible');
   finishCorporateVolume3HandoffContent();
-  getRuntimeModules().forEach((mod) => {
-    gridEl?.querySelector(`[data-module-anchor="${mod.id}"]`)?.classList.add('is-revealed', 'is-pop-visible');
-  });
-  board.classList.add('is-pop-complete');
   applyCorporateVolumeCheatUi();
   startCordFloat();
   queueIntroCordLayout();
@@ -2488,6 +2771,58 @@ function bootstrapChapter2View() {
   queueIntroCordLayout();
 }
 
+function finishPadlockUnlock(lock, card, thumb, mod) {
+  if (lock.dataset.unlockFinished === '1') return;
+  lock.dataset.unlockFinished = '1';
+  lock.remove();
+  card.classList.remove('locked', 'is-unlocking');
+  card.title = getChapterAriaLabel(mod).replace(/ \(locked\)$/, '');
+  card.setAttribute('aria-label', getChapterAriaLabel(mod));
+
+  const img = thumb.querySelector('.module-thumb__img');
+  if (img && isCorporateSkin()) {
+    img.style.display = '';
+    requestAnimationFrame(() => {
+      img.style.filter = '';
+      img.style.transform = '';
+    });
+  }
+
+  thumb.querySelector('.module-stars')?.remove();
+  const starCount = starsForModule(mod);
+  thumb.appendChild(renderStars(starCount));
+  syncDiamondBadge(thumb, mod);
+
+  if (getModuleLayout() === 'folder') refreshFolderChrome(card, mod);
+}
+
+function beginPadlockUnlock(lock, card, thumb, mod) {
+  if (lock.dataset.unlockRunning === '1') return;
+  lock.dataset.unlockRunning = '1';
+  lock.classList.add('is-opening');
+  card.classList.add('locked', 'is-unlocking');
+
+  const finish = () => finishPadlockUnlock(lock, card, thumb, mod);
+  const reduced =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (reduced) {
+    finish();
+    return;
+  }
+
+  window.setTimeout(finish, PADLOCK_UNLOCK_MS);
+  lock.addEventListener(
+    'animationend',
+    (event) => {
+      if (event.target !== lock || event.animationName !== 'intro-padlock-unlock-fade') return;
+      finish();
+    },
+    { once: true }
+  );
+}
+
 /** Update lock/completion UI without tearing down the grid (avoids reveal blink). */
 function patchModulesFromRuntime(unlockedIds = []) {
   if (!gridEl) return;
@@ -2498,28 +2833,34 @@ function patchModulesFromRuntime(unlockedIds = []) {
     const card = wrap?.querySelector('.module-card');
     if (!wrap || !card) continue;
 
-    card.classList.toggle('locked', mod.locked);
+    const thumb = card.querySelector('.module-thumb');
+    if (!thumb) continue;
+
+    const lock = thumb.querySelector('.module-padlock');
+    const isUnlocking = lock?.dataset.unlockRunning === '1';
+
+    card.classList.toggle('locked', mod.locked || isUnlocking);
     card.title = getChapterAriaLabel(mod).replace(/ \(locked\)$/, '');
     card.setAttribute('aria-label', getChapterAriaLabel(mod));
 
     syncModuleThumbLabel(card, mod);
-    const thumb = card.querySelector('.module-thumb');
-    if (!thumb) continue;
 
-    let lock = thumb.querySelector('.module-padlock');
     let stars = thumb.querySelector('.module-stars');
 
     if (mod.locked) {
       if (modulePathHoverId === mod.id) clearModulePathHover();
       if (!lock) {
-        lock = document.createElement('div');
-        lock.className = 'module-padlock';
-        lock.innerHTML = PADLOCK_SVG;
-        thumb.appendChild(lock);
+        const nextLock = document.createElement('div');
+        nextLock.className = 'module-padlock';
+        nextLock.innerHTML = PADLOCK_SVG;
+        thumb.appendChild(nextLock);
       }
       stars?.remove();
+    } else if (lock && (unlockedSet.has(mod.id) || lock.classList.contains('is-opening'))) {
+      beginPadlockUnlock(lock, card, thumb, mod);
     } else {
       lock?.remove();
+      card.classList.remove('is-unlocking');
       const starCount = starsForModule(mod);
       if (!stars) {
         stars = renderStars(starCount);
@@ -2601,6 +2942,7 @@ function renderModules({ _retry = 0 } = {}) {
 
     card.append(thumb);
     applyFolderChrome(card, mod);
+    bindModuleCardHoverSound(card);
 
     card.addEventListener('click', () => {
       const runtime = moduleById(mod.id);
@@ -2641,16 +2983,27 @@ function renderModules({ _retry = 0 } = {}) {
     applyCorporateModuleGridLayout({ skipCatalogSync: true });
     tagCorporatePopTargets();
     wireLeaderboardScopes();
-    gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-      wrap.classList.add('is-revealed', 'is-pop-visible');
-    });
-    viewport?.classList.add('is-modules-visible', 'is-chapter-settled', 'is-corporate-board');
-    board?.classList.remove('is-pop-pending', 'is-path-pop-active');
-    board?.classList.add('is-pop-complete');
-    introState.complete = true;
-    introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
-    introState.progress = 1;
-    syncCorporatePathViewport();
+    if (board?.classList.contains('is-pop-complete')) {
+      gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+        wrap.classList.add('is-revealed', 'is-pop-visible');
+      });
+      viewport?.classList.add('is-modules-visible', 'is-chapter-settled', 'is-corporate-board');
+      board.classList.remove('is-pop-pending', 'is-path-pop-active');
+      introState.complete = true;
+      introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
+      introState.progress = 1;
+      syncCorporatePathViewport();
+    } else {
+      const introBoard = document.getElementById('intro-corporate-board');
+      const skipIntroHide =
+        (getCurrentChapter() === 3 && isChapter3HandoffDone()) ||
+        (getCurrentChapter() === 2 && isChapterHandoffDone());
+      if (!skipIntroHide) {
+        applyIntroInitialHiddenState(introBoard, gridEl);
+        stopCordFloat();
+        clearPlugState();
+      }
+    }
   } else if (isSpaceSkin()) {
     applyCorporateModuleGridLayout({ skipCatalogSync: true });
   }
@@ -3891,41 +4244,20 @@ function tagCorporatePopTargets() {
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
   if (isCorporateSkin()) {
+    board.querySelector('.intro-corporate-board__copy')?.classList.add('intro-corporate-pop-target');
     board.querySelectorAll('.intro-corporate-nav__item').forEach((btn) => {
       btn.classList.add('intro-corporate-pop-target');
     });
-    board.querySelector('.intro-corporate-board__title')?.classList.add('intro-corporate-pop-target');
-    board.querySelector('.intro-corporate-board__lead')?.classList.add('intro-corporate-pop-target');
+    board.querySelectorAll('.intro-corporate-nav__connector').forEach((connector) => {
+      connector.classList.add('intro-corporate-pop-target');
+    });
     gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
       wrap.classList.add('intro-corporate-pop-target');
     });
   }
   board.querySelector('.intro-corporate-player-profile')?.classList.add('intro-corporate-pop-target');
-  board.querySelector('.intro-corporate-leaderboard-panel')?.classList.add('intro-corporate-pop-target');
   board.querySelector('.intro-corporate-activity')?.classList.add('intro-corporate-pop-target');
-}
-
-function resetCorporatePop() {
-  const board = document.getElementById('intro-corporate-board');
-  if (!board) return;
-  board.classList.remove('is-pop-complete', 'is-path-pop-active');
-  board.classList.add('is-pop-pending');
-  board.querySelectorAll('.intro-corporate-pop-target').forEach((el) => {
-    el.classList.remove('is-pop-visible');
-  });
-  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-    wrap.classList.remove('is-pop-visible');
-    wrap.classList.add('is-revealed');
-  });
-  board
-    .querySelectorAll('.intro-corporate-leaderboard__row.is-lb-row-pop')
-    .forEach((row) => row.classList.remove('is-lb-row-pop', 'is-pop-visible'));
-  pathMapEl?.querySelectorAll('.intro-cord.is-intro-revealed').forEach((host) => {
-    host.classList.remove('is-intro-revealed', 'is-plugging');
-  });
-  viewport?.classList.remove('is-modules-visible');
-  stopCordFloat();
-  clearPlugState();
+  board.querySelector('.intro-corporate-leaderboard')?.classList.add('intro-corporate-pop-target');
 }
 
 /** Show all corporate board UI (chapters, leaderboard, activity) without waiting on pop animation. */
@@ -3935,14 +4267,7 @@ function revealCorporateBoard() {
 
   if (isCorporateSkin()) resetCorporateDashboardLayout();
   tagCorporatePopTargets();
-  board.classList.remove('is-pop-pending');
-  board.classList.add('is-pop-complete');
-  board.querySelectorAll('.intro-corporate-pop-target').forEach((el) => {
-    el.classList.add('is-pop-visible');
-  });
-  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
-    wrap.classList.add('is-revealed', 'is-pop-visible');
-  });
+  forceRevealIntroElements(board, gridEl);
   viewport?.classList.add('is-modules-visible', 'is-chapter-settled', 'is-corporate-board');
   introState.complete = true;
   introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
@@ -3955,244 +4280,127 @@ function revealCorporateBoard() {
   requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
 }
 
-function finishCorporatePop(runId) {
-  if (runId != null && runId !== corporatePopRun) return;
+/** Mark intro finished without re-flashing elements that already popped in sequence. */
+function completeCorporateIntro() {
   const board = document.getElementById('intro-corporate-board');
-  board?.classList.remove('is-path-pop-active');
-  revealCorporateBoard();
+  if (!board) return;
+
+  board.classList.remove('is-pop-pending', 'is-path-pop-active', 'is-side-pop-active', 'is-nav-pop-active');
+  board.classList.add('is-pop-complete');
+
+  viewport?.classList.add('is-modules-visible', 'is-chapter-settled', 'is-corporate-board');
+  introState.complete = true;
+  introState.chapterSettledAt = introState.chapterSettledAt ?? performance.now();
+  introState.progress = 1;
+
+  applyCorporateModuleGridLayout();
+  syncPlayerProfile();
+  wireSecretChapterTrigger();
+  syncCorporatePathViewport();
+  queueIntroCordLayout();
+  requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
 }
 
-async function popCorporateTarget(el, runId, holdMs = CORPORATE_POP.stepMs) {
-  if (!el || runId !== corporatePopRun) return;
-  el.classList.add('is-pop-visible');
-  await delayMs(holdMs);
-}
-
-/** Chapter cards: column order, top row before lower branch (3A before 3B). */
-function corporateModulePopOrder(modules = getRuntimeModules()) {
-  return [...modules]
-    .sort((a, b) => (a.column !== b.column ? a.column - b.column : a.row - b.row))
-    .map((m) => m.id);
-}
-
-/** Cord grows after each module, in path order (fork upper lane before lower). */
-function corporateIntroCordSequence(modules = getRuntimeModules()) {
-  const order = corporateModulePopOrder(modules);
-  const orderIdx = new Map(order.map((id, i) => [id, i]));
-  const ids = new Set(order);
-  const edges = getChapterEdges().filter(([from, to]) => ids.has(from) && ids.has(to));
-  const sequence = [];
-
-  for (let i = 0; i < order.length; i++) {
-    const from = order[i];
-    const outgoing = edges
-      .filter(([f, t]) => f === from && orderIdx.get(t) > i)
-      .sort((a, b) => orderIdx.get(a[1]) - orderIdx.get(b[1]));
-    for (const [f, t] of outgoing) sequence.push(edgeKey(f, t));
-  }
-  return sequence;
-}
-
-function markIntroCordRevealed(edgeKeyStr) {
-  const seg = findCordSegment(edgeKeyStr);
-  if (!seg) return;
-  seg.plugSettle = 1;
-  const hosts = seg.cordHosts
-    ? Object.values(seg.cordHosts)
-    : seg.group
-      ? [seg.group]
-      : [];
-  for (const host of hosts) {
-    host.classList.remove('is-plugging');
-    host.classList.add('is-intro-revealed');
-  }
-  applyCordRopePaths(cordFloatPhase);
-}
-
-function runCordGrowAnimation(edgeKeyStr, runId) {
-  return new Promise((resolve) => {
-    const finish = () => {
-      stopPlugAnimation();
-      introState.pluggingEdge = null;
-      markIntroCordRevealed(edgeKeyStr);
-      resolve();
-    };
-
-    const seg = findCordSegment(edgeKeyStr);
-    if (!seg || runId !== corporatePopRun) {
-      finish();
-      return;
-    }
-
-    refreshSubwayCordGeometry();
-    seg.plugSettle = 0;
-    applyCordRopePaths(cordFloatPhase);
-
-    const plugHosts = seg.cordHosts
-      ? Object.values(seg.cordHosts)
-      : seg.group
-        ? [seg.group]
-        : [];
-    for (const host of plugHosts) host.classList.add('is-plugging');
-
-    const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
-    const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
-    const shadow = seg.paths.find((p) => p.classList.contains('intro-cord-rope--shadow'));
-    const guide = body ?? seg.centerlinePath;
-    if (!guide) {
-      finish();
-      return;
-    }
-
-    if (seg.knotStart) {
-      seg.knotStart.setAttribute('cx', String(seg.p0.x));
-      seg.knotStart.setAttribute('cy', String(seg.p0.y));
-      seg.knotStart.style.opacity = '1';
-    }
-    if (seg.knotEnd) seg.knotEnd.style.opacity = '0';
-
-    const len = guide.getTotalLength() || 1;
-    const dashLayers = [body, sheen, shadow].filter(Boolean);
-    for (const path of dashLayers) {
-      path.style.strokeDasharray = String(len);
-      path.style.strokeDashoffset = String(len);
-    }
-
-    const duration = CORPORATE_POP.cordGrowMs;
-    const start = performance.now();
-    introState.pluggingEdge = edgeKeyStr;
-
-    const tick = (now) => {
-      if (runId !== corporatePopRun) {
-        finish();
-        return;
-      }
-
-      const t = Math.min(1, (now - start) / duration);
-      const eased = easeOutCubic(t);
-      const offset = len * (1 - eased);
-      for (const path of dashLayers) path.style.strokeDashoffset = String(offset);
-
-      if (t > 0.58) {
-        seg.plugSettle = ((t - 0.58) / 0.42) * 0.55;
-        refreshSubwayCordGeometry();
-        applyCordRopePaths(cordFloatPhase);
-      } else {
-        applyCordRopePaths(cordFloatPhase);
-      }
-
-      if (t < 1) {
-        introState.plugRaf = requestAnimationFrame(tick);
-      } else {
-        for (const path of dashLayers) {
-          path.style.strokeDashoffset = '0';
-        }
-        if (seg.knotEnd) {
-          seg.knotEnd.setAttribute('cx', String(seg.p3.x));
-          seg.knotEnd.setAttribute('cy', String(seg.p3.y));
-          seg.knotEnd.style.opacity = '1';
-        }
-        animateCordPlugSettle(seg, finish);
-      }
-    };
-
-    introState.plugRaf = requestAnimationFrame(tick);
-  });
-}
-
-async function animateIntroCordReveal(edgeKeyStr, runId) {
-  if (runId !== corporatePopRun) return;
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced) {
-    markIntroCordRevealed(edgeKeyStr);
-    return;
-  }
-  if (!findCordSegment(edgeKeyStr)) return;
-  await runCordGrowAnimation(edgeKeyStr, runId);
-}
-
-async function measureIntroCordsAsync() {
+function measureIntroCordsAsync() {
   return new Promise((resolve) => {
     measureIntroCords({ onReady: resolve });
   });
 }
 
-async function popCorporatePathSequence(board, runId) {
-  const modules = getRuntimeModules();
-  const moduleOrder = corporateModulePopOrder(modules);
-  const cordOrder = corporateIntroCordSequence(modules);
-  const cordsByFrom = new Map();
-
-  for (const key of cordOrder) {
-    const { fromId } = parseEdgeKey(key);
-    if (!cordsByFrom.has(fromId)) cordsByFrom.set(fromId, []);
-    cordsByFrom.get(fromId).push(key);
-  }
-
-  applyCorporateModuleGridLayout();
-  if (runId !== corporatePopRun) return;
-
-  board.classList.add('is-path-pop-active');
-  viewport?.classList.add('is-modules-visible');
-
-  const wraps = [...(gridEl?.querySelectorAll('.intro-module-wrap') ?? [])];
-  wraps.forEach((wrap) => wrap.classList.add('is-revealed', 'is-pop-visible'));
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  await measureIntroCordsAsync();
-  if (runId !== corporatePopRun) return;
-  wraps.forEach((wrap) => wrap.classList.remove('is-pop-visible'));
-
-  for (const moduleId of moduleOrder) {
-    if (runId !== corporatePopRun) return;
-    const wrap = gridEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
-    if (!wrap) continue;
-    wrap.classList.add('is-pop-visible', 'is-revealed');
-    await delayMs(CORPORATE_POP.moduleStaggerMs);
-
-    const edgeKeys = cordsByFrom.get(moduleId) ?? [];
-    for (const edgeKeyStr of edgeKeys) {
-      if (runId !== corporatePopRun) return;
-      await animateIntroCordReveal(edgeKeyStr, runId);
-    }
-  }
+function allowCordMeasureForIntro(allowed) {
+  introCordBuildAllowed = allowed;
 }
 
-async function popCorporateSideColumn(board, runId) {
-  const blocks = [
-    board.querySelector('.intro-corporate-player-profile'),
-    board.querySelector('.intro-corporate-activity'),
-    board.querySelector('.intro-corporate-leaderboard-panel')
-  ].filter(Boolean);
-
-  for (const block of blocks) {
-    if (runId !== corporatePopRun) return;
-    await popCorporateTarget(block, runId, CORPORATE_POP.sideStaggerMs);
-  }
-
-  const rows = [
-    ...(board.querySelectorAll(
-      '.intro-corporate-leaderboard__row:not(.intro-corporate-leaderboard__row--pad):not(.intro-corporate-leaderboard__row--tape)'
-    ) ?? [])
-  ];
-  let shown = 0;
-  for (const row of rows) {
-    if (runId !== corporatePopRun) return;
-    row.classList.add('is-lb-row-pop', 'is-pop-visible');
-    await delayMs(CORPORATE_POP.lbRowStaggerMs);
-    if (++shown >= CORPORATE_POP.lbRowCap) break;
-  }
+function buildCorporateIntroDirectorDeps() {
+  return {
+    gridEl,
+    viewport,
+    stage,
+    getRuntimeModules,
+    corporatePathColumns,
+    corporateModuleIdsInColumn,
+    corporateIntroCordKeysFromColumn,
+    applyCorporateModuleGridLayout,
+    measureIntroCordsAsync,
+    allowCordMeasure: allowCordMeasureForIntro,
+    findCordSegment,
+    connectorsEl,
+    applyCordRopePaths,
+    getCordFloatPhase: () => cordFloatPhase,
+    queueIntroCordLayout,
+    completeIntro: completeCorporateIntro,
+    tagCorporatePopTargets,
+    stopCordFloat,
+    clearPlugState,
+    stopIntroAuto,
+    syncParallax,
+    syncIntroSideColumnLayout
+  };
 }
 
-/** Recover a broken corporate dashboard (hidden path, empty grid, stale layout cheat). */
+/** Grid columns on the path map, left to right. */
+function corporatePathColumns(modules = getRuntimeModules()) {
+  return [...new Set(modules.map((m) => m.column))].sort((a, b) => a - b);
+}
+
+/** Module ids in one column (top row before lower branch). */
+function corporateModuleIdsInColumn(col, modules = getRuntimeModules()) {
+  return modules
+    .filter((m) => m.column === col)
+    .sort((a, b) => a.row - b.row)
+    .map((m) => m.id);
+}
+
+/** All cords from one column to the next (revealed together). */
+function corporateIntroCordKeysFromColumn(fromCol, modules = getRuntimeModules()) {
+  const cols = corporatePathColumns(modules);
+  const toIdx = cols.indexOf(fromCol) + 1;
+  if (toIdx <= 0 || toIdx >= cols.length) return [];
+
+  const toCol = cols[toIdx];
+  const byId = new Map(modules.map((m) => [m.id, m]));
+  const ids = new Set(modules.map((m) => m.id));
+
+  return getChapterEdges()
+    .filter(([from, to]) => {
+      const f = byId.get(from);
+      const t = byId.get(to);
+      return f && t && ids.has(from) && ids.has(to) && f.column === fromCol && t.column === toCol;
+    })
+    .sort(([af, at], [bf, bt]) => {
+      const fa = byId.get(af);
+      const fb = byId.get(bf);
+      const ta = byId.get(at);
+      const tb = byId.get(bt);
+      if (fa.row !== fb.row) return fa.row - fb.row;
+      return ta.row - tb.row;
+    })
+    .map(([from, to]) => edgeKey(from, to));
+}
+
+/** Recover layout after intro is done — must not skip the opening pop sequence on refresh. */
 function recoverCorporateDashboard() {
   if (!isCorporateSkin()) return;
+
+  const board = document.getElementById('intro-corporate-board');
+  if (!board?.classList.contains('is-pop-complete')) return;
 
   resetCorporateDashboardLayout();
 
   const wrapCount = gridEl?.querySelectorAll('.intro-module-wrap').length ?? 0;
-  if (!wrapCount) renderModules();
+  if (!wrapCount) {
+    renderModules();
+    revealCorporateBoard();
+  } else {
+    tagCorporatePopTargets();
+    board.querySelectorAll('.intro-corporate-pop-target').forEach((el) => {
+      el.classList.add('is-pop-visible');
+    });
+    gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+      wrap.classList.add('is-revealed', 'is-pop-visible');
+    });
+  }
 
-  revealCorporateBoard();
   syncCorporatePathViewport();
   queueIntroCordLayout();
   wireSecretChapterTrigger();
@@ -4208,69 +4416,24 @@ function bootstrapCorporateIntro() {
     return;
   }
 
-  if (!document.getElementById('intro-corporate-board')) return;
-
-  recoverCorporateDashboard();
-}
-
-async function runCorporatePopSequence() {
-  if (!isCorporateSkin()) return;
-
   const board = document.getElementById('intro-corporate-board');
   if (!board) return;
 
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced || board.classList.contains('is-pop-complete')) {
-    revealCorporateBoard();
+  resetCorporateDashboardLayout();
+
+  const wrapCount = gridEl?.querySelectorAll('.intro-module-wrap').length ?? 0;
+  if (!wrapCount) renderModules();
+
+  if (board.classList.contains('is-pop-complete')) {
+    forceRevealIntroElements(board, gridEl);
+    syncCorporatePathViewport();
+    queueIntroCordLayout();
+    wireSecretChapterTrigger();
     return;
   }
 
-  const runId = ++corporatePopRun;
-  try {
-    stopIntroAuto();
-
-    stage.style.transform = 'none';
-    syncParallax(0);
-    document.documentElement.classList.remove('is-intro-scrubbing');
-    viewport?.classList.remove('is-hero-visible', 'is-camera-moving');
-
-    resetCorporatePop();
-    tagCorporatePopTargets();
-
-    const navItems = [...board.querySelectorAll('.intro-corporate-nav__item')];
-    const title = board.querySelector('.intro-corporate-board__title');
-    const lead = board.querySelector('.intro-corporate-board__lead');
-
-    for (const btn of navItems) {
-      if (runId !== corporatePopRun) return;
-      await popCorporateTarget(btn, runId, CORPORATE_POP.navStaggerMs);
-    }
-
-    if (title) {
-      await popCorporateTarget(title, runId, CORPORATE_POP.copyStaggerMs);
-      if (runId !== corporatePopRun) return;
-    }
-
-    if (lead) {
-      await popCorporateTarget(lead, runId, CORPORATE_POP.copyStaggerMs);
-      if (runId !== corporatePopRun) return;
-    }
-
-    await popCorporatePathSequence(board, runId);
-    if (runId !== corporatePopRun) return;
-
-    await popCorporateSideColumn(board, runId);
-    if (runId !== corporatePopRun) return;
-
-    finishCorporatePop(runId);
-  } catch (err) {
-    console.error('[wf-map] corporate pop sequence failed', err);
-    if (runId === corporatePopRun) revealCorporateBoard();
-  } finally {
-    if (runId === corporatePopRun && board.classList.contains('is-pop-pending')) {
-      revealCorporateBoard();
-    }
-  }
+  tagCorporatePopTargets();
+  void playIntro(buildCorporateIntroDirectorDeps());
 }
 
 function moduleById(id) {
@@ -4349,11 +4512,22 @@ function pathCardSizePx() {
   return Number.isFinite(n) && n > 0 ? n : 194;
 }
 
+function applySubwayLaneLayout() {
+  if (isCorporateSkin()) {
+    applyCorporateSubwayLaneLayout(cordRopeSegments, isEdgeFilled);
+  } else {
+    const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
+    applySubwayMidXLanes(cordRopeSegments, midPitch);
+  }
+}
+
 function refreshSubwayCordGeometry() {
+  if (introIsPlaying) return;
   for (const seg of cordRopeSegments) refreshCordSegmentEndpoints(seg);
-  applySubwayLaneBundles(cordRopeSegments, { cardSizePx: pathCardSizePx() });
-  const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
-  applySubwayMidXLanes(cordRopeSegments, midPitch);
+  const cardSizePx = pathCardSizePx();
+  applySubwayLaneBundles(cordRopeSegments, { cardSizePx });
+  applyFlexStackCordAlignment(cordRopeSegments, pathMapEl, { cardSizePx });
+  applySubwayLaneLayout();
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
   reorderSubwayCordGroups();
 }
@@ -4443,9 +4617,6 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     plugStarGateBlocked = starGateBlocked;
     recordPlayActivity(runtimeBefore, outcome, newlyUnlocked, { playMode });
 
-    const targetCard = targetWrap?.querySelector('.module-card');
-    targetCard?.querySelector('.module-padlock')?.classList.add('is-opening');
-
     patchModulesFromRuntime(newlyUnlocked);
     onModuleProgress(newlyUnlocked, sourceMod.id, { starGateBlocked });
 
@@ -4489,22 +4660,23 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     seg.plugSettle = 0;
     applyCordRopePaths(cordFloatPhase);
 
-    const plugHosts = seg.cordHosts
-      ? Object.values(seg.cordHosts)
-      : connectorsEl
-        ? Array.from(
-            connectorsEl.querySelectorAll(`[data-edge="${edgeKeyStr}"], [data-cord-edge="${edgeKeyStr}"]`)
-          )
-        : [];
+    const plugHosts = cordHostsForSegment(seg, connectorsEl, edgeKeyStr);
     for (const host of plugHosts) host.classList.add('is-plugging');
+    markCordTubeHosts(plugHosts, { flowing: true });
 
-    const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
-    const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
-    const shadow = seg.paths.find((p) => p.classList.contains('intro-cord-rope--shadow'));
-    const guide = body ?? seg.centerlinePath;
-    if (!guide) {
+    const job = createTubeDrawJob(seg);
+    if (!job) {
       finish();
       return;
+    }
+    setTubeHidden(job);
+
+    const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
+    const shadow = seg.paths.find((p) => p.classList.contains('intro-cord-rope--shadow'));
+    for (const path of [sheen, shadow].filter(Boolean)) {
+      path.style.strokeDasharray = 'none';
+      path.style.strokeDashoffset = '0';
+      path.style.opacity = '0';
     }
 
     if (seg.knotStart) {
@@ -4514,31 +4686,15 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     }
     if (seg.knotEnd) seg.knotEnd.style.opacity = '0';
 
-    const len = guide.getTotalLength() || 1;
-    const dashLayers = [body, sheen, shadow].filter(Boolean);
-    for (const path of dashLayers) {
-      path.style.strokeDasharray = String(len);
-      path.style.strokeDashoffset = String(len);
-    }
-
-    const duration = PLUG_WIRE_TRAVEL_MS;
-    const start = performance.now();
     const label = cordChoiceLabel(outcome);
     let plugTooltipShown = false;
-
-    const plugPointAt = (eased) => guide.getPointAtLength(Math.min(len, len * eased));
 
     const landWire = () => {
       refreshSubwayCordGeometry();
       seg.plugSettle = 0.35;
       applyCordRopePaths(cordFloatPhase);
-      const endLen = guide.getTotalLength() || len;
-      for (const path of dashLayers) {
-        path.style.strokeDasharray = String(endLen);
-        path.style.strokeDashoffset = '0';
-      }
       for (const host of plugHosts) {
-        host.classList.remove('is-plugging');
+        host.classList.remove('is-plugging', 'is-tube-flowing');
         host.classList.add('is-filled');
       }
       seg.filled = true;
@@ -4573,41 +4729,26 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
       }
     };
 
-    const tick = (now) => {
-      if (landed) return;
-
-      const t = Math.min(1, (now - start) / duration);
-      const eased = easeOutCubic(t);
-
-      const offset = len * (1 - eased);
-      for (const path of dashLayers) path.style.strokeDashoffset = String(offset);
-
-      const pt = plugPointAt(eased);
-      if (label) {
-        if (!plugTooltipShown) {
-          plugTooltipShown = true;
-          showCordTooltip(label, pt.x, pt.y);
-        } else if (cordTooltipEl?.classList.contains('is-visible')) {
-          updateCordTooltipPosition(pt.x, pt.y);
+    void animateTubeDraw(job, PLUG_WIRE_TRAVEL_MS, {
+      ease: easeOutCubic,
+      onFrame: (t) => {
+        const pt = tubeFlowPointAt(job, t);
+        if (label && pt) {
+          if (!plugTooltipShown) {
+            plugTooltipShown = true;
+            showCordTooltip(label, pt.x, pt.y);
+          } else if (cordTooltipEl?.classList.contains('is-visible')) {
+            updateCordTooltipPosition(pt.x, pt.y);
+          }
         }
-      }
-
-      if (t > 0.62) {
-        seg.plugSettle = ((t - 0.62) / 0.38) * 0.55;
-        refreshSubwayCordGeometry();
-        applyCordRopePaths(cordFloatPhase);
-      } else {
+        if (t > 0.72) {
+          seg.plugSettle = ((t - 0.72) / 0.28) * 0.55;
+        }
         applyCordRopePaths(cordFloatPhase);
       }
-
-      if (t < 1) {
-        introState.plugRaf = requestAnimationFrame(tick);
-      } else {
-        landWire();
-      }
-    };
-
-    introState.plugRaf = requestAnimationFrame(tick);
+    }).then(() => {
+      if (!landed) landWire();
+    });
   };
 
   const safetyTimer = window.setTimeout(
@@ -4935,7 +5076,7 @@ function syncPathHoverModuleClasses(displayKeys, focusModuleId, incomingEdgeKey 
     const card = wrap.querySelector('.module-card');
     wrap.classList.toggle('is-path-hover-focus', isFocus);
     wrap.classList.toggle('is-path-hover-source', id === sourceId && !isFocus);
-    wrap.classList.toggle('is-path-hover-dim', !onPath.has(id));
+    wrap.classList.remove('is-path-hover-dim');
     if (card && (isCorporateSkin() || isSpaceSkin())) {
       card.classList.toggle('is-hover-pop', isFocus);
     }
@@ -4950,7 +5091,6 @@ function clearPathHoverModuleClasses() {
       'is-path-hover-dim',
       'is-path-hover-from'
     );
-    wrap.querySelector('.module-card')?.classList.remove('is-hover-pop');
   });
 }
 
@@ -5045,9 +5185,16 @@ function hidePathHoverTooltips() {
   }
 }
 
+function cordBodyPathForTooltip(seg) {
+  return (
+    seg.centerlinePath ??
+    seg.paths?.find((p) => p.classList.contains('intro-cord-rope--active')) ??
+    seg.paths?.find((p) => p.classList.contains('intro-cord-rope--body'))
+  );
+}
+
 function cordMidpointForTooltip(seg) {
-  const body =
-    seg.centerlinePath ?? seg.paths?.find((p) => p.classList.contains('intro-cord-rope--active'));
+  const body = cordBodyPathForTooltip(seg);
   if (!body) return null;
   const len = body.getTotalLength();
   if (!len) return null;
@@ -5152,11 +5299,16 @@ function applyChapterTargetPathHover(moduleId, mode) {
 
   displayKeys = filterPlayablePathEdgeKeys(displayKeys);
   if (!displayKeys.size) {
-    clearModulePathHover();
+    /* No tubes to highlight yet — do not clear card hover pop (scale). */
+    if (pathMapEl?.classList.contains('is-module-path-hover')) {
+      clearModulePathHover();
+    }
+    modulePathHoverId = moduleId;
+    modulePathHoverIncomingKey = null;
+    modulePathHoverRouteId = null;
+    void panPathViewportTowardModule(moduleId);
     return;
   }
-
-  if (isCorporateSkin() || isSpaceSkin()) playModuleHoverClick();
 
   modulePathHoverId = moduleId;
   modulePathHoverIncomingKey = null;
@@ -5183,11 +5335,13 @@ function applyChapterTargetPathHover(moduleId, mode) {
   });
 
   syncPathHoverModuleClasses(displayKeys, moduleId, sourceEdgeKey);
-  showPathHoverTooltipsForEdges(displayKeys);
+  showPathHoverTooltipsForEdges(moduleHoverTooltipEdgeKeys(moduleId, displayKeys));
+  void panPathViewportTowardModule(moduleId);
 }
 
 /** Hover one played tube — highlight only that segment and show its decision. */
 function setCordEdgeHover(edgeKey) {
+  if (introIsPlaying) return;
   if (!edgeKey || !pathMapEl || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
     return;
   }
@@ -5205,8 +5359,6 @@ function setCordEdgeHover(edgeKey) {
   modulePathHoverRouteId = null;
   cordEdgeHoverKey = edgeKey;
 
-  if (isCorporateSkin() || isSpaceSkin()) playModuleHoverClick();
-
   const { toId } = parseEdgeKey(edgeKey);
   pathMapEl.classList.add('is-module-path-hover', 'is-cord-edge-hover');
   pathMapEl.setAttribute('data-path-hover-edge', edgeKey);
@@ -5223,12 +5375,14 @@ function setCordEdgeHover(edgeKey) {
 
   syncPathHoverModuleClasses(displayKeys, toId, edgeKey);
   showPathHoverTooltipsForEdges(displayKeys);
+  if (toId) void panPathViewportTowardModule(toId);
 }
 
 function setModulePathHover(
   moduleId,
   { incomingEdgeKey = null, routeVariantId = null, clientY = null } = {}
 ) {
+  if (introIsPlaying) return;
   if (!moduleId || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
     clearModulePathHover();
     return;
@@ -5292,8 +5446,6 @@ function setModulePathHover(
   ) {
     return;
   }
-
-  if (isCorporateSkin() || isSpaceSkin()) playModuleHoverClick();
 
   modulePathHoverId = moduleId;
   modulePathHoverIncomingKey = hoverIncomingKey;
@@ -5362,6 +5514,7 @@ function setModulePathHover(
 
   syncPathHoverModuleClasses(displayKeys, moduleId, sourceEdgeKey);
   showPathHoverTooltipsForEdges(tooltipKeys);
+  void panPathViewportTowardModule(moduleId);
 }
 
 /** @param {EventTarget | null} related */
@@ -5597,9 +5750,21 @@ function applyCordRopePaths(phase = cordFloatPhase) {
   for (const seg of cordRopeSegments) {
     if (seg.isSubway) {
       const d = ropePathD(seg, phase);
-      for (const path of seg.paths) path.setAttribute('d', d);
-      if (seg.centerlinePath) seg.centerlinePath.setAttribute('d', d);
-      if (seg.hitPath) seg.hitPath.setAttribute('d', d);
+      const hideSpine = isCorporateSkin() && seg.corporateSpineHidden;
+      if (isCorporateSkin() && seg.cordHosts) {
+        for (const host of Object.values(seg.cordHosts)) {
+          host.classList.toggle('is-corporate-spine-hidden', hideSpine);
+        }
+      }
+      for (const path of seg.paths) {
+        if (hideSpine && path.classList.contains('intro-cord-rope--body')) {
+          path.setAttribute('d', '');
+          continue;
+        }
+        path.setAttribute('d', d);
+      }
+      if (seg.centerlinePath) seg.centerlinePath.setAttribute('d', hideSpine ? '' : d);
+      if (seg.hitPath) seg.hitPath.setAttribute('d', hideSpine ? '' : d);
       continue;
     }
     const d = ropePathD(seg, phase);
@@ -5699,24 +5864,30 @@ async function animateModulePlugLanding(targetWrap, onUnlockAtSquash, onComplete
 }
 
 function animateCordPlugSettle(seg, onDone, { durationMs = 540 } = {}) {
-  const from = seg.plugSettle ?? 0;
-  const start = performance.now();
-  const duration = durationMs;
-
-  const tick = (now) => {
-    const t = Math.min(1, (now - start) / duration);
-    seg.plugSettle = from + (1 - from) * easeOutBack(t);
-    applyCordRopePaths(cordFloatPhase);
-    if (t < 1) {
-      requestAnimationFrame(tick);
-    } else {
-      seg.plugSettle = 1;
-      applyCordRopePaths(cordFloatPhase);
+  return new Promise((resolve) => {
+    const complete = () => {
       onDone?.();
-    }
-  };
+      resolve();
+    };
+    const from = seg.plugSettle ?? 0;
+    const start = performance.now();
+    const duration = durationMs;
 
-  requestAnimationFrame(tick);
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      seg.plugSettle = from + (1 - from) * easeOutBack(t);
+      applyCordRopePaths(cordFloatPhase);
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        seg.plugSettle = 1;
+        applyCordRopePaths(cordFloatPhase);
+        complete();
+      }
+    };
+
+    requestAnimationFrame(tick);
+  });
 }
 
 function startCordFloat() {
@@ -5739,6 +5910,11 @@ function startCordFloat() {
 
 function measureIntroCords({ onReady } = {}) {
   if (!pathMapEl || !connectorsEl || !gridEl) {
+    onReady?.();
+    return;
+  }
+
+  if (introIsPlaying && !introCordBuildAllowed) {
     onReady?.();
     return;
   }
@@ -5791,9 +5967,10 @@ function measureIntroCords({ onReady } = {}) {
     });
   }
 
-  applySubwayLaneBundles(cordRopeSegments, { cardSizePx: pathCardSizePx() });
-  const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
-  applySubwayMidXLanes(cordRopeSegments, midPitch);
+  const cardSizePx = pathCardSizePx();
+  applySubwayLaneBundles(cordRopeSegments, { cardSizePx });
+  applyFlexStackCordAlignment(cordRopeSegments, pathMapEl, { cardSizePx });
+  applySubwayLaneLayout();
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
 
   const w = Math.max(pathMapEl.offsetWidth, mapRect.width);
@@ -5833,14 +6010,19 @@ function measureIntroCords({ onReady } = {}) {
 
     if (useSubway && seg.isSubway && subwayLayers) {
       seg.cordHosts = {};
-      const ropeLayers = [
-        { className: 'intro-cord-rope--shadow', filled: false, layerName: 'shadow' },
-        { className: 'intro-cord-rope--body', filled: true, layerName: 'body' },
-        { className: 'intro-cord-rope--sheen', filled: false, layerName: 'sheen' }
-      ];
+      const ropeLayers = isCorporateSkin()
+        ? [{ className: 'intro-cord-rope--body', filled: true, layerName: 'body' }]
+        : [
+            { className: 'intro-cord-rope--shadow', filled: false, layerName: 'shadow' },
+            { className: 'intro-cord-rope--body', filled: true, layerName: 'body' },
+            { className: 'intro-cord-rope--sheen', filled: false, layerName: 'sheen' }
+          ];
 
       for (const layer of ropeLayers) {
         const host = makeSubwayCordHost(seg, filled);
+        if (isCorporateSkin() && seg.corporateSpineHidden) {
+          host.classList.add('is-corporate-spine-hidden');
+        }
         const path = document.createElementNS(NS, 'path');
         path.setAttribute('class', `intro-cord-rope ${layer.className}`);
         path.setAttribute('fill', 'none');
@@ -5923,9 +6105,25 @@ function measureIntroCords({ onReady } = {}) {
       const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
       if (!body) continue;
 
+      if (isCorporateSkin() && seg.corporateSpineHidden) {
+        body.style.strokeDasharray = 'none';
+        body.style.strokeDashoffset = '0';
+        continue;
+      }
+
       const len = body.getTotalLength();
       const filled = isEdgeFilled(seg.key);
-      if (seg.isSubway && !filled) {
+      if (seg.isSubway && isCorporateSkin()) {
+        /* During intro only: hide spines for column-by-column dash grow. After intro (or on
+         * resize remeasure), always show full pathway lines — unfilled edges are not dashed off. */
+        if (introIsPlaying) {
+          body.style.strokeDasharray = String(len);
+          body.style.strokeDashoffset = String(len);
+        } else {
+          body.style.strokeDasharray = 'none';
+          body.style.strokeDashoffset = '0';
+        }
+      } else if (seg.isSubway && !filled) {
         body.style.strokeDasharray = 'none';
         body.style.strokeDashoffset = '0';
       } else {
@@ -5948,7 +6146,7 @@ function measureIntroCords({ onReady } = {}) {
         path.style.strokeDashoffset = filled ? '0' : String(len);
       }
     }
-    if (!introState.pluggingEdge) startCordFloat();
+    if (!introState.pluggingEdge && !introIsPlaying) startCordFloat();
     if (cordEdgeHoverKey) {
       setCordEdgeHover(cordEdgeHoverKey);
     } else if (modulePathHoverId) {
@@ -5965,6 +6163,7 @@ function measureIntroCords({ onReady } = {}) {
 
 let cordLayoutRaf = 0;
 function queueIntroCordLayout() {
+  if (introIsPlaying) return;
   if (introState.pluggingEdge || introState.plugActive) return;
   if (introState.autoDriving && !introState.complete) return;
   if (cordLayoutRaf) cancelAnimationFrame(cordLayoutRaf);
@@ -6468,6 +6667,7 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('[wf-map] unhandled rejection', event.reason);
 });
 
+initFlowWiringCheat();
 initCheatPanel();
 
 buildStarfield();
@@ -6478,7 +6678,6 @@ renderModules();
 if (isCorporateSkin()) {
   ensurePathZoomControls();
   syncCorporatePathMapToCatalog();
-  bootstrapCorporateIntro();
 }
 if (usesIntroSidePanel()) syncPlayerProfile();
 syncCorporateIntroClass();
@@ -6498,7 +6697,13 @@ window.addEventListener('wf-theme-change', () => {
   }
 
   corporatePopRun += 1;
-  resetCorporatePop();
+  cancelIntroDirector();
+  const themeBoard = document.getElementById('intro-corporate-board');
+  if (themeBoard && !themeBoard.classList.contains('is-pop-complete')) {
+    applyIntroInitialHiddenState(themeBoard, gridEl);
+    stopCordFloat();
+    clearPlugState();
+  }
   viewport?.classList.remove('is-corporate-board');
 
   if (isSpaceSkin()) {
@@ -6560,6 +6765,12 @@ window.addEventListener('wf-path-grid-layout-change', () => {
   if (!isCorporateSkin() && !isSpaceSkin()) return;
   renderModules();
   if (isCorporateSkin()) syncCorporatePathViewport();
+  queueIntroCordLayout();
+});
+
+window.addEventListener('wf-path-lane-framing-change', () => {
+  if (!isCorporateSkin()) return;
+  syncCorporatePathViewport();
   queueIntroCordLayout();
 });
 
@@ -6654,12 +6865,6 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 initIntroScrollControl();
-
-if (isCorporateSkin()) {
-  requestAnimationFrame(() => {
-    recoverCorporateDashboard();
-  });
-}
 
 if (getCurrentChapter() === 3 && isChapter3HandoffDone()) {
   if (isCorporateSkin()) bootstrapCorporateChapter3View();

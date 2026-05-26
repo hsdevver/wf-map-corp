@@ -1,5 +1,5 @@
 /**
- * Corporate path grid row rules — strict (vol. 3) vs flex (vol. 1-style forks).
+ * Corporate path grid — strict (grid + fork rows) vs flex (centered branch stacks).
  */
 
 const STORAGE_KEY = 'wf-cheat-path-grid-layout-v1';
@@ -36,6 +36,32 @@ export function applyPathGridLayoutMode(mode = getPathGridLayoutMode()) {
   window.dispatchEvent(new CustomEvent('wf-path-grid-layout-change', { detail: { mode } }));
 }
 
+export function isPathGridFlexLayout(mode = getPathGridLayoutMode()) {
+  return mode === 'flex';
+}
+
+/**
+ * Row tracks used for flex lane height — deepest branch stack, not graph row spread.
+ * @param {{ column: number, row: number }[]} modules
+ * @param {PathGridLayoutMode} [mode]
+ */
+export function pathGridEffectiveRowCount(modules, mode = getPathGridLayoutMode()) {
+  if (!modules?.length) return 1;
+  const maxGraphRow = Math.max(1, ...modules.map((m) => m.row));
+  if (mode !== 'flex' || !pathGridNeedsLayoutRules(modules)) return maxGraphRow;
+
+  const byColumn = new Map();
+  for (const mod of modules) {
+    if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
+    byColumn.get(mod.column).push(mod);
+  }
+  let maxStack = 1;
+  for (const colMods of byColumn.values()) {
+    maxStack = Math.max(maxStack, colMods.length);
+  }
+  return maxStack;
+}
+
 /** @param {string | number | null | undefined} chapter */
 export function chapterLaneLetter(chapter) {
   const raw = String(chapter ?? '').trim();
@@ -43,7 +69,7 @@ export function chapterLaneLetter(chapter) {
   return match ? match[1].toUpperCase() : null;
 }
 
-/** Main spine row — chapters 1, 2, 4, 5 and strict-mode B lanes. */
+/** Main spine row — chapters 1, 2, 4, 5 and grid-strict B lanes on the spine. */
 export const PATH_GRID_SPINE_ROW = 2;
 
 /** True when the graph uses fork columns (not a single-row linear path). */
@@ -63,8 +89,8 @@ export function pathGridHasVerticalLanes(modules) {
   return pathGridNeedsLayoutRules(modules);
 }
 
-/** @param {string | number | null | undefined} chapter */
-function strictRowForChapter(chapter) {
+/** Strict grid: A top, B on spine, C bottom (vol. 3 fan). Used for flex stack order & spacing. */
+function laneRowStrictGrid(chapter) {
   const lane = chapterLaneLetter(chapter);
   if (lane === 'A') return 1;
   if (lane === 'B') return PATH_GRID_SPINE_ROW;
@@ -72,8 +98,8 @@ function strictRowForChapter(chapter) {
   return PATH_GRID_SPINE_ROW;
 }
 
-/** @param {string | number | null | undefined} chapter */
-function flexRowForChapter(chapter) {
+/** Strict grid: A top, B bottom when a column has no C lane (vol. 1-style fork on the grid). */
+function laneRowStrictGridFork(chapter) {
   const lane = chapterLaneLetter(chapter);
   if (lane === 'A') return 1;
   if (lane === 'B') return 3;
@@ -93,16 +119,18 @@ export function resolvePathGridRow(mod, modules, mode = getPathGridLayoutMode())
   const letters = new Set(
     colMods.map((m) => chapterLaneLetter(m.chapter)).filter(Boolean)
   );
-  const useStrictColumn = mode === 'strict' || letters.has('C');
 
-  if (useStrictColumn) return strictRowForChapter(mod.chapter);
-  return flexRowForChapter(mod.chapter);
+  if (mode === 'flex') {
+    /** Flex: logical strict rows for stack order (DOM centers the branch). */
+    return laneRowStrictGrid(mod.chapter);
+  }
+
+  /** Strict: grid placement — fork spread when no C lane, else A / spine / C rows. */
+  if (letters.has('C')) return laneRowStrictGrid(mod.chapter);
+  return laneRowStrictGridFork(mod.chapter);
 }
 
 /**
- * Flex: per column, A on top and B on bottom when there is no C lane (vol. 1 forks).
- * Columns that include C use strict rows (vol. 3 fan).
- *
  * @template {object} T
  * @param {T[]} modules
  * @param {PathGridLayoutMode} [mode]
@@ -110,12 +138,6 @@ export function resolvePathGridRow(mod, modules, mode = getPathGridLayoutMode())
  */
 export function layoutPathGridModules(modules, mode = getPathGridLayoutMode()) {
   if (!modules?.length || !pathGridNeedsLayoutRules(modules)) return modules;
-
-  const byColumn = new Map();
-  for (const mod of modules) {
-    if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
-    byColumn.get(mod.column).push(mod);
-  }
 
   return modules.map((mod) => {
     const row = resolvePathGridRow(mod, modules, mode);

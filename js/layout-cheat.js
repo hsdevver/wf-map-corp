@@ -8,6 +8,12 @@ import {
   getPathGridLayoutMode,
   setPathGridLayoutMode
 } from './path-grid-layout.js';
+import {
+  PATH_LANE_FRAMING_MODES,
+  applyPathLaneFramingMode,
+  getPathLaneFramingMode,
+  setPathLaneFramingMode
+} from './path-lane-framing.js';
 
 const STORAGE_KEY = 'wf-cheat-layout-v3';
 const THUMB_STYLE_KEY = 'wf-cheat-chapter-thumb-v1';
@@ -228,7 +234,15 @@ export function buildLayoutSkeletonHtml() {
             `<button type="button" class="cheat-panel__seg-btn" data-path-grid-layout="${mode.id}">${mode.label}</button>`
         ).join('')}
       </div>
-      <p class="cheat-panel__sound-note">Strict: A top, B on the center spine (aligned with chapters 1–2–4–5), C bottom. Flex: when a column has no C lane, A moves up and B moves down.</p>
+      <p class="cheat-panel__sound-note">Strict: grid rows — A top and B bottom when there is no C lane; A / spine / C when there is. Flex: same A–B–C spacing in a centered stack (strict row gap), not pinned to grid rows.</p>
+      <span class="cheat-panel__label" id="cheat-path-lane-framing-label">Path lane zoom</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Path lane zoom framing">
+        ${PATH_LANE_FRAMING_MODES.map(
+          (mode) =>
+            `<button type="button" class="cheat-panel__seg-btn" data-path-lane-framing="${mode.id}">${mode.label}</button>`
+        ).join('')}
+      </div>
+      <p class="cheat-panel__sound-note">5 columns: lane zoom fills five chapter columns (top/bottom branches may clip). Fit rows: caps card size so the full branch stack fits vertically — you may see more than five columns.</p>
     </section>`;
 }
 
@@ -256,6 +270,7 @@ export function syncLayoutSkeletonUi(panel) {
   syncChapterThumbUi(panel);
   syncPathHighlightUi(panel);
   syncPathGridLayoutUi(panel);
+  syncPathLaneFramingUi(panel);
 }
 
 /** @param {HTMLElement} panel */
@@ -288,6 +303,13 @@ export function wireLayoutCheat(panel) {
   panel.querySelectorAll('[data-path-grid-layout]').forEach((btn) => {
     btn.addEventListener('click', () => {
       setPathGridLayoutMode(/** @type {'flex' | 'strict'} */ (btn.dataset.pathGridLayout));
+      syncLayoutSkeletonUi(panel);
+    });
+  });
+
+  panel.querySelectorAll('[data-path-lane-framing]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setPathLaneFramingMode(/** @type {'five-columns' | 'fit-rows'} */ (btn.dataset.pathLaneFraming));
       syncLayoutSkeletonUi(panel);
     });
   });
@@ -371,6 +393,14 @@ export function syncPathGridLayoutUi(panel) {
   });
 }
 
+/** @param {HTMLElement} panel */
+export function syncPathLaneFramingUi(panel) {
+  const mode = getPathLaneFramingMode();
+  panel.querySelectorAll('[data-path-lane-framing]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.pathLaneFraming === mode);
+  });
+}
+
 export function initLayoutCheat() {
   if (/\/workflow-intro\//.test(window.location.pathname)) {
     resetCorporateDashboardLayout();
@@ -380,4 +410,5 @@ export function initLayoutCheat() {
   applyChapterThumbStyle();
   applyPathHighlightMode();
   applyPathGridLayoutMode();
+  applyPathLaneFramingMode();
 }
