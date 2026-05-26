@@ -1,8 +1,14 @@
+import {
+  FLOW_WIRING_3B_4A_EDGE,
+  FLOW_WIRING_3B_4A_KEY,
+  isComplicatedFlowWiring
+} from './flow-wiring-cheat.js';
+
 /**
  * Shared consequence-flow graph (workflow-intro + flow-map).
  * Bump FLOW_GRAPH_BUILD when changing module topology (cache-bust ?v= on imports).
  */
-export const FLOW_GRAPH_BUILD = 'grid-7col-v1';
+export const FLOW_GRAPH_BUILD = 'flow-wiring-cheat-v1';
 
 /**
  * Volume 1 — classic split (3A / 3B) → convergence (4) → hub (5).
@@ -688,9 +694,10 @@ export const CHAPTER_3_CORD_ANCHORS = {
   'c3m3b|c3m4a': {
     from: 'right',
     to: 'left',
-    fromAlong: SUBWAY_JUNCTION_ALONG.center,
+    fromAlong: SUBWAY_JUNCTION_ALONG.upper,
     toAlong: SUBWAY_JUNCTION_ALONG.upper,
-    subwayLane: 0,
+    /** Lane 2 — separate gutter trunk from 3A→4A (lane 0) so the upward branch stays visible. */
+    subwayLane: 2,
     slack: 1.1,
     sagSign: -1
   },
@@ -1098,9 +1105,43 @@ export const PATH_ROUTE_VARIANTS = {
   ]
 };
 
+function isFlowWiring3b4aEdge(from, to) {
+  return from === FLOW_WIRING_3B_4A_EDGE[0] && to === FLOW_WIRING_3B_4A_EDGE[1];
+}
+
+function resolveChapter3Edges() {
+  if (isComplicatedFlowWiring()) return CHAPTER_3_EDGES;
+  return CHAPTER_3_EDGES.filter(([from, to]) => !isFlowWiring3b4aEdge(from, to));
+}
+
+function resolveChapter3CordAnchors() {
+  if (isComplicatedFlowWiring()) return CHAPTER_3_CORD_ANCHORS;
+  const anchors = { ...CHAPTER_3_CORD_ANCHORS };
+  delete anchors[FLOW_WIRING_3B_4A_KEY];
+  return anchors;
+}
+
+function resolveChapter3PlayScenarios() {
+  if (isComplicatedFlowWiring()) return CHAPTER_3_PLAY_SCENARIOS;
+  const scenario = CHAPTER_3_PLAY_SCENARIOS.c3m3b;
+  if (!scenario) return CHAPTER_3_PLAY_SCENARIOS;
+  return {
+    ...CHAPTER_3_PLAY_SCENARIOS,
+    c3m3b: {
+      ...scenario,
+      outcomes: scenario.outcomes.filter((o) => o.id !== 'to-4a')
+    }
+  };
+}
+
+function filterRouteVariantsForFlowWiring(variants) {
+  if (!variants?.length || isComplicatedFlowWiring()) return variants;
+  return variants.filter((v) => !v.edges.includes(FLOW_WIRING_3B_4A_KEY));
+}
+
 /** @param {string} moduleId */
 export function getPathRouteVariants(moduleId) {
-  return PATH_ROUTE_VARIANTS[moduleId] ?? null;
+  return filterRouteVariantsForFlowWiring(PATH_ROUTE_VARIANTS[moduleId] ?? null);
 }
 
 export function getChapterGraph(chapter) {
@@ -1115,9 +1156,9 @@ export function getChapterGraph(chapter) {
   if (chapter === 3) {
     return {
       modules: CHAPTER_3_MODULES,
-      edges: CHAPTER_3_EDGES,
-      cordAnchors: CHAPTER_3_CORD_ANCHORS,
-      scenarios: CHAPTER_3_PLAY_SCENARIOS
+      edges: resolveChapter3Edges(),
+      cordAnchors: resolveChapter3CordAnchors(),
+      scenarios: resolveChapter3PlayScenarios()
     };
   }
   return {

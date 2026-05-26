@@ -1,4 +1,4 @@
-import { getChapterCapsLabel } from './consequence-flow.js?v=grid-7col-v1';
+import { getChapterCapsLabel } from './consequence-flow.js?v=flow-wiring-cheat-v1';
 
 export const STORAGE_MODULE_LAYOUT = 'wf-map-corp-module-layout';
 export const DEFAULT_MODULE_LAYOUT = 'clean';

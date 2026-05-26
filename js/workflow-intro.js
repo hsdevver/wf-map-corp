@@ -35,7 +35,7 @@ import {
   getChapterAriaLabel,
   getPathRouteVariants,
   MODULE_SKILL_FOCUS
-} from './consequence-flow.js?v=grid-7col-v1';
+} from './consequence-flow.js?v=flow-wiring-cheat-v1';
 import {
   applyPlayOutcome,
   beginChapter2,
@@ -309,6 +309,8 @@ let pathZoomLevel = 0;
 /** @type {{ mapSize: number, laneSize: number, focusSize: number, panMap: number, panLane: number, panFocus: number, panFocusEarly: number, panFocusLate: number, focusStartCol: number, focusEndCol: number } | null} */
 let pathRevealBounds = null;
 let pathFocusWindowKey = '';
+/** After opening the vol. 3 center hub, keep the late (3–7) focus window for pan/zoom. */
+let pathHubFocusPanEngaged = false;
 let pathFocusPanAnimRunId = 0;
 let pathFocusPanAnimating = false;
 let pathZoomControlsWired = false;
@@ -489,7 +491,7 @@ function getPathFocusColumnWindow(box, modules = getRuntimeModules()) {
   if (maxCol <= PATH_FOCUS_COLUMN_COUNT) {
     return { startCol: 1, endCol: maxCol, mode: 'full' };
   }
-  if (pathFocusShouldUseLateWindow(modules, maxCol)) {
+  if (pathFocusShouldUseLateWindow(modules, maxCol) || pathHubFocusPanEngaged) {
     return {
       startCol: PATH_LATE_FOCUS_START_COL,
       endCol: maxCol,
@@ -612,11 +614,12 @@ function pathZoomPanX(box, bounds, zoomT, cardSize) {
   return lerp(bounds.panLane, panFocus, u);
 }
 
+/** True when the map is zoomed in past “full flow” — lane/focus levels allow horizontal scroll. */
 function pathCanManualPan() {
   return (
     isCorporateSkin() &&
     pathNeedsColumnReveal() &&
-    pathZoomLevel > PATH_ZOOM_LANE_LEVEL + 0.002 &&
+    pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD &&
     !pathFocusPanAnimating &&
     pathColumnRevealPhase !== 'revealing'
   );
@@ -708,18 +711,31 @@ function onPathMapWheel(e) {
   setPathZoomLevel(pathZoomLevel + step);
 }
 
+const PATH_PAN_DRAG_THRESHOLD_PX = 8;
+
 function wirePathPanDrag() {
   if (!pathMapEl || pathPanDragWired) return;
   pathPanDragWired = true;
 
   let dragPointerId = null;
+  let dragActive = false;
   let dragStartX = 0;
   let dragStartPan = 0;
   let dragBox = null;
   let dragCardSize = 0;
 
-  const endPathPanDrag = () => {
+  const endPathPanDrag = (didPan = false) => {
+    if (didPan) pathMapEl.dataset.pathDidPan = '1';
+    if (dragPointerId != null) {
+      try {
+        pathMapEl.releasePointerCapture(dragPointerId);
+      } catch {
+        /* not captured */
+      }
+    }
     dragPointerId = null;
+    dragActive = false;
+    dragBox = null;
     pathMapEl?.classList.remove('is-path-pan-dragging');
     window.removeEventListener('pointermove', onPathPanMove);
     window.removeEventListener('pointerup', onPathPanUp);
@@ -730,6 +746,17 @@ function wirePathPanDrag() {
   const onPathPanMove = (e) => {
     if (e.pointerId !== dragPointerId || !dragBox) return;
     const dx = e.clientX - dragStartX;
+    if (!dragActive) {
+      if (Math.abs(dx) < PATH_PAN_DRAG_THRESHOLD_PX) return;
+      dragActive = true;
+      pathMapEl.classList.add('is-path-pan-dragging');
+      try {
+        pathMapEl.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    e.preventDefault();
     setPathMapStageTransform(clampPathStagePan(dragStartPan + dx, dragBox, dragCardSize));
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
@@ -737,8 +764,23 @@ function wirePathPanDrag() {
 
   const onPathPanUp = (e) => {
     if (e.pointerId !== dragPointerId) return;
-    endPathPanDrag();
+    if (dragActive) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    endPathPanDrag(dragActive);
   };
+
+  pathMapEl.addEventListener(
+    'click',
+    (e) => {
+      if (pathMapEl.dataset.pathDidPan !== '1') return;
+      delete pathMapEl.dataset.pathDidPan;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true
+  );
 
   pathMapEl.addEventListener(
     'pointerdown',
@@ -746,7 +788,7 @@ function wirePathPanDrag() {
       if (!pathCanManualPan() || e.button !== 0) return;
       if (
         e.target.closest(
-          'button, .module-card, .intro-cord-hit, .intro-cord, .intro-path-zoom-controls, .intro-path-zoom-btn'
+          'button, .intro-cord-hit, .intro-cord, .intro-path-zoom-controls, .intro-path-zoom-btn'
         )
       ) {
         return;
@@ -759,16 +801,13 @@ function wirePathPanDrag() {
       const { min, max } = getPathPanRange(box, cardSize);
       if (max - min < 4) return;
 
-      e.preventDefault();
-      e.stopPropagation();
-
       dragPointerId = e.pointerId;
+      dragActive = false;
       dragStartX = e.clientX;
       dragStartPan = pathStagePanX;
       dragBox = box;
       dragCardSize = cardSize;
 
-      pathMapEl.classList.add('is-path-pan-dragging');
       window.addEventListener('pointermove', onPathPanMove);
       window.addEventListener('pointerup', onPathPanUp);
       window.addEventListener('pointercancel', onPathPanUp);
@@ -842,6 +881,7 @@ function resetPathColumnReveal() {
   pathZoomLevel = 0;
   pathRevealBounds = null;
   pathFocusWindowKey = '';
+  pathHubFocusPanEngaged = false;
   pathFocusPanAnimRunId += 1;
   pathFocusPanAnimating = false;
   pathStagePanX = 0;
@@ -934,7 +974,7 @@ function updatePathColumnRevealClasses() {
   pathMapEl?.classList.toggle('is-path-focus-early', inFocus && window?.mode === 'early');
   pathMapEl?.classList.toggle('is-path-focus-late', inFocus && window?.mode === 'late');
   let panEnabled = false;
-  if (inFocus && box && pathRevealBounds) {
+  if (pathCanManualPan() && box && pathRevealBounds) {
     const cardSize = pathZoomCardSize(pathRevealBounds, pathZoomLevel);
     const { min, max } = getPathPanRange(box, cardSize);
     panEnabled = max - min > 4;
@@ -956,6 +996,35 @@ function updatePathColumnRevealClasses() {
     pathMapEl?.removeAttribute('data-path-focus-end');
     pathMapEl?.classList.remove('is-path-focus-early', 'is-path-focus-late');
   }
+}
+
+async function animatePathStagePan(fromPan, toPan, box, cardSize) {
+  if (!pathMapEl || !gridEl || !box || !Number.isFinite(cardSize)) return;
+
+  const runId = ++pathFocusPanAnimRunId;
+  pathFocusPanAnimating = true;
+  pathMapEl.classList.add('is-path-focus-panning');
+  clearModulePathHover();
+
+  let lastCordSync = 0;
+  await tweenLeaderboard(PATH_FOCUS_PAN_MS, PATH_FOCUS_PAN_EASE, (t) => {
+    if (runId !== pathFocusPanAnimRunId) return;
+    setPathMapStageTransform(clampPathStagePan(lerp(fromPan, toPan, t), box, cardSize));
+    refreshSubwayCordGeometry();
+    applyCordRopePaths(cordFloatPhase);
+    const now = performance.now();
+    if (now - lastCordSync > 120) {
+      lastCordSync = now;
+      measureIntroCords();
+    }
+  });
+
+  if (runId !== pathFocusPanAnimRunId) return;
+
+  pathFocusPanAnimating = false;
+  pathMapEl.classList.remove('is-path-focus-panning');
+  updatePathColumnRevealClasses();
+  queueIntroCordLayout();
 }
 
 async function animatePathFocusPan(fromPan, toPan, box, bounds) {
@@ -995,6 +1064,51 @@ async function animatePathFocusPan(fromPan, toPan, box, bounds) {
   applyPathRevealFocus(box, bounds);
   updatePathColumnRevealClasses();
   queueIntroCordLayout();
+}
+
+/** Pan the path grid right so chapter 5 (center hub) sits in the late 3–7 focus window. */
+function panPathOnHubModuleOpen(mod) {
+  if (!mod || mod.id !== 'c3m5') return;
+  if (!isCorporateSkin() || !pathNeedsColumnReveal()) return;
+
+  const box = measurePathLayoutBox();
+  if (!box || box.maxCol <= PATH_FOCUS_COLUMN_COUNT) return;
+
+  const bounds = refreshPathRevealBounds(box);
+  if (!bounds) return;
+
+  pathHubFocusPanEngaged = true;
+  const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
+  const lateWindow = {
+    startCol: PATH_LATE_FOCUS_START_COL,
+    endCol: box.maxCol
+  };
+  const nextKey = pathFocusWindowKeyFor(lateWindow);
+  const toPan = clampPathStagePan(
+    computePathFocusPanX(box, cardSize, lateWindow.startCol, lateWindow.endCol),
+    box,
+    cardSize
+  );
+  const fromPan = pathStagePanX;
+
+  if (nextKey === pathFocusWindowKey && Math.abs(fromPan - toPan) < 1) {
+    updatePathColumnRevealClasses();
+    return;
+  }
+
+  pathFocusWindowKey = nextKey;
+  refreshPathRevealBounds(box);
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    applyPathGridCardSize(box, cardSize);
+    setPathMapStageTransform(toPan);
+    updatePathColumnRevealClasses();
+    queueIntroCordLayout();
+    return;
+  }
+
+  if (pathFocusPanAnimating) pathFocusPanAnimRunId += 1;
+  void animatePathStagePan(fromPan, toPan, box, cardSize);
 }
 
 /** Pan focus window when progress reaches chapter 4+ on a wide volume. */
@@ -2504,6 +2618,7 @@ function renderModules({ _retry = 0 } = {}) {
       if (!canOpen) return;
       if (runtime.id === 'm8') clearModuleStarGatePrompt();
       focusModuleCard(runtime.id);
+      panPathOnHubModuleOpen(runtime);
       openModuleModal(runtime, card, {
         imageUrl: imageUrlFor(runtime),
         onProgress: (unlockedIds, moduleId, detail) => onModuleProgress(unlockedIds, moduleId, detail),
@@ -4204,8 +4319,20 @@ function refreshCordSegmentEndpoints(seg) {
   seg.anchorOpts = anchorOpts;
 }
 
+function syncCordSegmentPaintState() {
+  for (const seg of cordRopeSegments) {
+    const host = seg.cordHosts?.body ?? seg.cordHosts?.hit ?? seg.group;
+    seg.filled =
+      isEdgeFilled(seg.key) || Boolean(host?.classList.contains('is-filled'));
+    seg.plugging =
+      introState.pluggingEdge === seg.key || Boolean(host?.classList.contains('is-plugging'));
+  }
+}
+
 function reorderSubwayCordGroups() {
   if (!connectorsEl || !isCorporateSkin()) return;
+  syncCordSegmentPaintState();
+  sortSubwayCordPaintOrder(cordRopeSegments);
   for (const layerName of ['shadow', 'body', 'sheen', 'hit']) {
     const layer = connectorsEl.querySelector(`.intro-connectors__layer--${layerName}`);
     if (!layer) continue;
@@ -4228,7 +4355,6 @@ function refreshSubwayCordGeometry() {
   const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
   applySubwayMidXLanes(cordRopeSegments, midPitch);
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
-  sortSubwayCordPaintOrder(cordRopeSegments);
   reorderSubwayCordGroups();
 }
 
@@ -4415,6 +4541,9 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
         host.classList.remove('is-plugging');
         host.classList.add('is-filled');
       }
+      seg.filled = true;
+      seg.plugging = false;
+      reorderSubwayCordGroups();
       if (seg.knotEnd) {
         seg.knotEnd.setAttribute('cx', String(seg.p3.x));
         seg.knotEnd.setAttribute('cy', String(seg.p3.y));
@@ -5647,6 +5776,8 @@ function measureIntroCords({ onReady } = {}) {
       toSide: anchorOpts.to,
       anchorOpts,
       isSubway,
+      filled,
+      plugging: introState.pluggingEdge === key,
       phaseOffset: cordPhaseOffset(key),
       sagOffset: cordPhaseOffset(`${key}-sag`),
       breezeSeed: cordPhaseOffset(`${key}-breeze`),
@@ -5664,7 +5795,6 @@ function measureIntroCords({ onReady } = {}) {
   const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
   applySubwayMidXLanes(cordRopeSegments, midPitch);
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
-  sortSubwayCordPaintOrder(cordRopeSegments);
 
   const w = Math.max(pathMapEl.offsetWidth, mapRect.width);
   const h = Math.max(pathMapEl.offsetHeight, mapRect.height);
@@ -6405,6 +6535,15 @@ window.addEventListener('wf-corporate-volumes-cheat', () => {
   applyCorporateVolumeCheatUi();
   syncCorporatePathMapToCatalog();
   if (isCorporateSkin() && pathMapMatchesCatalog()) queueIntroCordLayout();
+});
+
+window.addEventListener('wf-flow-wiring-change', () => {
+  if (!isCorporateSkin()) return;
+  prepareCatalogForRender();
+  syncCorporatePathMapToCatalog();
+  if (!pathMapMatchesCatalog()) renderModules();
+  queueIntroCordLayout();
+  syncPersistentPathHighlights();
 });
 
 window.addEventListener('wf-sync-next-play-glow', () => {

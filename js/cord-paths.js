@@ -730,9 +730,20 @@ function subwayTrunkDy(seg) {
 }
 
 /**
- * Paint-order for subway cords: downward edges under upward edges at elbows.
+ * Stacking rank — filled/plugging tubes must paint above the grey network.
+ * @param {{ filled?: boolean, plugging?: boolean }} seg
+ */
+function subwayCordPaintRank(seg) {
+  if (seg.filled) return 2;
+  if (seg.plugging) return 1;
+  return 0;
+}
+
+/**
+ * Paint-order for subway cords: unfilled under filled; then downward under upward at elbows.
  * SVG stacks later siblings on top; call after lane bundling / midX stagger.
- * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
+ * Set `filled` / `plugging` on each segment before sorting (see syncCordSegmentPaintState).
+ * @param {{ key: string, isSubway?: boolean, filled?: boolean, plugging?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number} }[]} segments
  */
 export function sortSubwayCordPaintOrder(segments) {
   if (!segments?.length) return;
@@ -746,6 +757,10 @@ export function sortSubwayCordPaintOrder(segments) {
   };
 
   segments.sort((a, b) => {
+    const ra = subwayCordPaintRank(a);
+    const rb = subwayCordPaintRank(b);
+    if (ra !== rb) return ra - rb;
+
     const ta = tier(a);
     const tb = tier(b);
     if (ta !== tb) return ta - tb;

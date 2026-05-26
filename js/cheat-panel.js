@@ -41,9 +41,10 @@ import {
   syncLayoutSkeletonUi,
   wireLayoutCheat
 } from './layout-cheat.js';
+import { getFlowWiringMode, initFlowWiringCheat, setFlowWiringMode } from './flow-wiring-cheat.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = 'corp-12';
+const PANEL_VERSION = 'corp-13';
 
 function panelIsCurrent(panel) {
   return (
@@ -52,7 +53,8 @@ function panelIsCurrent(panel) {
     panel.querySelector('[data-music-volume]') &&
     panel.querySelector('[data-music-track]') &&
     panel.querySelector('[data-hover-sound-volume]') &&
-    (!/\/workflow-intro\//.test(window.location.pathname) || panel.querySelector('[data-cheat-layout]'))
+    (!/\/workflow-intro\//.test(window.location.pathname) ||
+      (panel.querySelector('[data-cheat-layout]') && panel.querySelector('[data-flow-wiring]')))
   );
 }
 
@@ -140,6 +142,19 @@ function buildPanel() {
     </section>
 
     ${showPathReset ? buildLayoutSkeletonHtml() : ''}
+
+    ${
+      showPathReset
+        ? `<section class="cheat-panel__section" data-cheat-flow-wiring aria-labelledby="cheat-flow-wiring-label">
+      <span class="cheat-panel__label" id="cheat-flow-wiring-label">Flow wiring</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Volume 3 path complexity" data-flow-wiring>
+        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="complicated">Complicated</button>
+        <button type="button" class="cheat-panel__seg-btn" data-flow-wiring-mode="simple">Simple</button>
+      </div>
+      <p class="cheat-panel__sound-note">Complicated adds the 3B → 4A branch tube. Simple keeps 3B on the center row to 4B only.</p>
+    </section>`
+        : ''
+    }
 
     <section class="cheat-panel__section" aria-labelledby="cheat-music-label">
       <span class="cheat-panel__label" id="cheat-music-label">Background music</span>
@@ -302,6 +317,11 @@ function syncPanelUi(panel) {
   if (hoverVolumeLabel) hoverVolumeLabel.textContent = `${hoverVolumePct}%`;
 
   if (panel.querySelector('[data-cheat-layout]')) syncLayoutSkeletonUi(panel);
+
+  const flowWiring = getFlowWiringMode();
+  panel.querySelectorAll('[data-flow-wiring-mode]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.flowWiringMode === flowWiring);
+  });
 }
 
 function setPanelOpen(panel, open) {
@@ -466,6 +486,13 @@ function wirePanel(panel) {
     });
   });
 
+  panel.querySelectorAll('[data-flow-wiring-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setFlowWiringMode(btn.dataset.flowWiringMode);
+      syncPanelUi(panel);
+    });
+  });
+
   if (panel.querySelector('[data-cheat-layout]')) wireLayoutCheat(panel);
 }
 
@@ -491,6 +518,7 @@ export function initCheatPanel() {
   initTheme();
   initModuleLayout();
   initLayoutCheat();
+  initFlowWiringCheat();
   initAmbientMusicSync();
   initModuleCardSounds();
   const panel = ensurePanel();

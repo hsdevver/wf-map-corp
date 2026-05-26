@@ -4,7 +4,12 @@ import {
   CHAPTER_3_END_MODULE_ID,
   getChapterGraph,
   MODULE_STAR_UNLOCK_GATES
-} from './consequence-flow.js?v=grid-7col-v1';
+} from './consequence-flow.js?v=flow-wiring-cheat-v1';
+import {
+  FLOW_WIRING_3B_4A_KEY,
+  getFlowWiringMode,
+  isComplicatedFlowWiring
+} from './flow-wiring-cheat.js';
 import {
   computeEmpathyScore,
   EMPATHY_SCORE_CEIL,
@@ -117,6 +122,7 @@ function loadState() {
     if (repairModuleScore(state, 'm2')) repaired = true;
     if (repairModuleScore(state, 'm6')) repaired = true;
     if (repairModuleOneStarScore(state, 'm8')) repaired = true;
+    if (repairFlowWiringProgress(state)) repaired = true;
     if (repaired) saveState(state);
     return state;
   } catch {
@@ -126,6 +132,20 @@ function loadState() {
 
 function saveState(state) {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/** Drop the optional 3B→4A edge when flow wiring is set to simple. */
+export function repairFlowWiringProgress(progress = state) {
+  if (isComplicatedFlowWiring()) return false;
+  let changed = false;
+  const before = progress.filledEdges.length;
+  progress.filledEdges = progress.filledEdges.filter((key) => key !== FLOW_WIRING_3B_4A_KEY);
+  if (progress.filledEdges.length !== before) changed = true;
+  if (progress.edgeLabels?.[FLOW_WIRING_3B_4A_KEY]) {
+    delete progress.edgeLabels[FLOW_WIRING_3B_4A_KEY];
+    changed = true;
+  }
+  return changed;
 }
 
 let state = loadState();
@@ -621,4 +641,13 @@ export function applyPlayOutcome(moduleId, outcome) {
 
 export function getPlayScenario(moduleId) {
   return getChapterGraph(getCatalogChapter()).scenarios[moduleId] ?? null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('wf-flow-wiring-change', () => {
+    if (repairFlowWiringProgress(state)) {
+      saveState(state);
+      notifyChange({ flowWiring: getFlowWiringMode() });
+    }
+  });
 }

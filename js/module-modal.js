@@ -1,4 +1,4 @@
-import { getChapterCapsLabel } from './consequence-flow.js?v=grid-7col-v1';
+import { getChapterCapsLabel } from './consequence-flow.js?v=flow-wiring-cheat-v1';
 import { recordPlayActivity } from './intro-activity-log.js';
 import {
   applyPlayOutcome,
