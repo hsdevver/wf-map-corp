@@ -31,8 +31,9 @@ html[data-skin='corporate'] {
   --side-activity-max: 11.5rem;
   --side-leaderboard-min: 11rem;
   --side-column-gap: 0.55rem;
-  /* Frosted sidebar: bright highlight on top of a soft shade (AA contrast, keeps hero gradient) */
-  --side-glass-shade: rgba(8, 14, 24, 0.4);
+  /* Frosted sidebar: light frost over a thin tint (no heavy plate behind cards) */
+  --side-glass-shade: rgba(8, 14, 24, 0.18);
+  --side-glass-elev-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
   --side-glass-frost: linear-gradient(
     168deg,
     rgba(255, 255, 255, 0.13) 0%,
@@ -45,7 +46,8 @@ html[data-skin='corporate'] {
 }
 
 html[data-skin='space'] {
-  --side-glass-shade: rgba(8, 14, 24, 0.4);
+  --side-glass-shade: rgba(8, 14, 24, 0.18);
+  --side-glass-elev-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
   --side-glass-frost: linear-gradient(
     168deg,
     rgba(255, 255, 255, 0.13) 0%,
@@ -368,8 +370,8 @@ html[data-skin='corporate'] .intro-corporate-leaderboard-panel,
 html[data-skin='space'] .intro-corporate-leaderboard-panel {
   position: absolute;
   top: 0;
-  right: 0;
-  bottom: 0;
+  right: var(--corporate-inset-x);
+  bottom: clamp(0.85rem, 1.8vw, 1.25rem);
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -381,6 +383,7 @@ html[data-skin='space'] .intro-corporate-leaderboard-panel {
   height: auto;
   max-height: none;
   pointer-events: auto;
+  box-sizing: border-box;
 }
 
 html[data-skin='corporate'] .intro-corporate-leaderboard-column,
@@ -393,11 +396,12 @@ html[data-skin='space'] .intro-corporate-leaderboard-column {
   max-width: min(280px, 30vw);
   flex: 1 1 auto;
   min-height: 0;
-  height: var(--side-column-height, 100%);
-  max-height: var(--side-column-height, none);
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
 }
 
 /* Player profile + coaching feedback — single card above leaderboard */
@@ -420,9 +424,7 @@ html[data-skin='space'] .intro-corporate-player-profile {
   background: var(--side-glass-bg);
   -webkit-backdrop-filter: blur(20px) saturate(1.45);
   backdrop-filter: blur(20px) saturate(1.45);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: var(--side-glass-elev-shadow);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -644,9 +646,7 @@ html[data-skin='space'] .intro-corporate-leaderboard {
   background: var(--side-glass-bg);
   -webkit-backdrop-filter: blur(20px) saturate(1.45);
   backdrop-filter: blur(20px) saturate(1.45);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: var(--side-glass-elev-shadow);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -659,7 +659,11 @@ html[data-skin='space'] .intro-corporate-leaderboard {
 /* Inline scope toggles in sheet header (no icon rail) */
 html[data-skin='corporate'] .intro-corporate-leaderboard--scope-inline,
 html[data-skin='space'] .intro-corporate-leaderboard--scope-inline {
-  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
   border: none;
   background: transparent;
@@ -807,15 +811,13 @@ html[data-skin='space'] .intro-corporate-leaderboard__body-sheet {
   flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
-  padding: 0.7rem 1.1rem 1.2rem;
+  padding: 0.7rem 1.1rem 1.05rem;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: var(--side-glass-bg);
   -webkit-backdrop-filter: blur(20px) saturate(1.45);
   backdrop-filter: blur(20px) saturate(1.45);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: var(--side-glass-elev-shadow);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -1292,9 +1294,7 @@ html[data-skin='space'] .intro-corporate-activity {
   background: var(--side-glass-bg);
   -webkit-backdrop-filter: blur(20px) saturate(1.45);
   backdrop-filter: blur(20px) saturate(1.45);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: var(--side-glass-elev-shadow);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -1588,8 +1588,8 @@ html[data-skin='corporate'] .intro-corporate-leaderboard__more,
 html[data-skin='space'] .intro-corporate-leaderboard__more {
   flex: 0 0 auto;
   flex-shrink: 0;
-  margin: 0.5rem 0 0;
-  padding: 0.35rem 0.5rem 0.3rem;
+  margin: 0.4rem 0 0;
+  padding: 0.2rem 0.5rem 0.45rem;
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -1874,6 +1874,16 @@ html[data-skin='corporate'] .intro-cord--subway.is-plugging .intro-cord-rope--sh
 }
 
 html[data-skin='corporate'] .intro-cord--subway.is-filled .intro-cord-rope--sheen,
+html.is-plug-active .intro-module-wrap.is-plug-landing > .module-card.is-plug-landing,
+html.is-plug-active .intro-module-wrap.is-plug-target > .module-card.locked {
+  animation-play-state: running !important;
+}
+
+html[data-skin='corporate'] .intro-module-wrap.is-plug-target .module-card.locked {
+  outline: 2px solid color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 50%, transparent);
+  outline-offset: 3px;
+}
+
 html[data-skin='corporate'] .intro-cord--subway.is-plugging .intro-cord-rope--sheen {
   stroke: rgba(255, 255, 255, 0.42);
   stroke-width: 2.5;
@@ -2604,13 +2614,20 @@ html[data-skin='corporate']
   }
 }
 
-html[data-skin='corporate'] .intro-corporate-leaderboard,
-html[data-skin='corporate'] .intro-corporate-activity {
+/* Accent rim on real cards only — not the tall transparent leaderboard shell */
+html[data-skin='corporate'] .intro-corporate-leaderboard:not(.intro-corporate-leaderboard--scope-inline),
+html[data-skin='corporate'] .intro-corporate-leaderboard__body-sheet,
+html[data-skin='corporate'] .intro-corporate-activity,
+html[data-skin='corporate'] .intro-corporate-player-profile {
   border-color: color-mix(in srgb, var(--corporate-accent) 28%, rgba(255, 255, 255, 0.22));
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.28),
-    0 0 48px color-mix(in srgb, var(--corporate-accent) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    var(--side-glass-elev-shadow),
+    0 0 28px color-mix(in srgb, var(--corporate-accent) 10%, transparent);
+}
+
+html[data-skin='corporate'] .intro-corporate-leaderboard--scope-inline {
+  border: none;
+  box-shadow: none;
 }
 
 html[data-skin='corporate'] .intro-next-chapter {
@@ -2698,18 +2715,18 @@ html[data-skin='corporate'] .intro-corporate-board.is-volume-2 .intro-path-grid:
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* Linear path (single row, no fork/merge) — left + vertical center in the lane */
+/* Linear path (single row) — left-align with copy/lead, vertically centered in the lane */
 html[data-skin='corporate'] .intro-corporate-board__path.intro-modules.is-path-linear,
 html[data-skin='corporate'] #modules.intro-corporate-board__path.is-path-linear,
 html[data-skin='space'] .intro-corporate-board__path.intro-modules.is-path-linear {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: flex-start;
 }
 
 html[data-skin='corporate'] .intro-corporate-board__path .intro-path-map.is-path-linear,
 html[data-skin='space'] .intro-corporate-board__path .intro-path-map.is-path-linear {
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   width: 100%;
 }
 
@@ -2723,6 +2740,8 @@ html[data-skin='space'] .intro-path-map.is-path-linear .intro-path-grid {
   width: max-content;
   max-width: 100%;
   margin-inline: 0;
+  padding-left: 0;
+  padding-right: var(--intro-path-hover-pad, 16px);
   justify-content: start;
   align-content: center;
   justify-items: stretch;

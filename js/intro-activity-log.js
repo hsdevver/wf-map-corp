@@ -17,10 +17,7 @@ const ACTIVITY_MIN_HEIGHT_PX = 104;
 /** Share of the full side column height reserved for the activity panel. */
 const ACTIVITY_COLUMN_SHARE = 0.25;
 const LB_VIEWPORT_MIN_ROWS = 4;
-/** Extra sheet height so footer + scope tabs are not clipped at the bottom. */
-const LB_PANEL_HEIGHT_SLACK_PX = 14;
 const SIDE_COLUMN_MIN_PX = 280;
-const SIDE_COLUMN_BOTTOM_PAD_PX = 20;
 /** Combined profile + feedback card (single column slot). */
 const PROFILE_CARD_VH_SHARE = 0.385;
 const PROFILE_CARD_MIN_PX = 276;
@@ -579,28 +576,35 @@ function clampPx(value, min, max) {
   return Math.round(Math.max(min, Math.min(max, value)));
 }
 
-/** Height available for the side column inside #viewport. */
+function readBoardBodyBottomPadPx(column) {
+  const body = column.closest('.intro-corporate-board__body');
+  if (!body) return 0;
+  return parseFloat(getComputedStyle(body).paddingBottom) || 0;
+}
+
+/** Height available for the side column inside the leaderboard panel. */
 function measureSideColumnHeight(column) {
+  const panel = column.closest('.intro-corporate-leaderboard-panel');
+  if (panel) {
+    const panelH = panel.getBoundingClientRect().height;
+    if (panelH > 0) return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(panelH));
+  }
+
   const colTop = column.getBoundingClientRect().top;
+  const bodyPadB = readBoardBodyBottomPadPx(column);
   const beat = column.closest('.intro-beat--chapter');
   if (beat) {
     const beatRect = beat.getBoundingClientRect();
-    return Math.max(
-      SIDE_COLUMN_MIN_PX,
-      Math.floor(beatRect.bottom - colTop - SIDE_COLUMN_BOTTOM_PAD_PX)
-    );
+    return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(beatRect.bottom - colTop - bodyPadB));
   }
 
   const viewportEl = document.getElementById('viewport');
   if (viewportEl) {
     const vp = viewportEl.getBoundingClientRect();
-    return Math.max(
-      SIDE_COLUMN_MIN_PX,
-      Math.floor(vp.bottom - colTop - SIDE_COLUMN_BOTTOM_PAD_PX)
-    );
+    return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(vp.bottom - colTop - bodyPadB));
   }
   const vh = window.visualViewport?.height ?? window.innerHeight;
-  return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(vh - colTop - SIDE_COLUMN_BOTTOM_PAD_PX));
+  return Math.max(SIDE_COLUMN_MIN_PX, Math.floor(vh - colTop - bodyPadB));
 }
 
 function syncActivityPanelHeight() {
@@ -612,8 +616,8 @@ function syncActivityPanelHeight() {
 
   const columnH = measureSideColumnHeight(column);
   column.style.setProperty('--side-column-height', `${columnH}px`);
-  column.style.height = `${columnH}px`;
-  column.style.maxHeight = `${columnH}px`;
+  column.style.height = '100%';
+  column.style.maxHeight = '100%';
 
   let profileCardH = clampPx(
     columnH * PROFILE_CARD_VH_SHARE,
@@ -652,20 +656,14 @@ function syncActivityPanelHeight() {
 
   let activityH = Math.max(ACTIVITY_MIN_HEIGHT_PX, Math.round(columnH * ACTIVITY_COLUMN_SHARE));
   let lbPanelH = columnH - profileCardH - gap * 2 - activityH;
-  const lbNeedPanel =
-    lbPadY +
-    lbHeadBlockH +
-    lbSheetPadBottom +
-    lbMoreBlockH +
-    lbMinViewport +
-    LB_PANEL_HEIGHT_SLACK_PX;
+  const lbNeedPanel = lbPadY + lbHeadBlockH + lbSheetPadBottom + lbMoreBlockH + lbMinViewport;
   const lbPanelMaxH = columnH - profileCardH - gap * 2 - ACTIVITY_MIN_HEIGHT_PX;
 
   if (lbPanelH < lbNeedPanel) {
     lbPanelH = Math.min(lbNeedPanel, lbPanelMaxH);
     activityH = Math.max(ACTIVITY_MIN_HEIGHT_PX, columnH - profileCardH - gap * 2 - lbPanelH);
   } else {
-    lbPanelH = Math.min(lbPanelH + LB_PANEL_HEIGHT_SLACK_PX, lbPanelMaxH);
+    lbPanelH = Math.min(lbPanelH, lbPanelMaxH);
     activityH = Math.max(ACTIVITY_MIN_HEIGHT_PX, columnH - profileCardH - gap * 2 - lbPanelH);
   }
 
@@ -693,9 +691,11 @@ function syncActivityPanelHeight() {
     listWrap.style.minHeight = '0';
   }
   leaderboard.style.setProperty('--leaderboard-panel-height', `${lbPanelH}px`);
-  leaderboard.style.flexBasis = `${lbPanelH}px`;
-  leaderboard.style.height = `${lbPanelH}px`;
-  leaderboard.style.maxHeight = `${lbPanelH}px`;
+  leaderboard.style.flex = '1 1 0';
+  leaderboard.style.flexBasis = '0';
+  leaderboard.style.minHeight = '0';
+  leaderboard.style.height = '';
+  leaderboard.style.maxHeight = '';
 
   window.dispatchEvent(new CustomEvent('wf:leaderboard-viewport'));
 }

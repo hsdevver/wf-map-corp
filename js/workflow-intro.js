@@ -267,7 +267,11 @@ function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
 /** Soft ceiling only — dashboard cards scale with viewport below this. */
 const PATH_CARD_MAX_PX = 360;
 const PATH_CARD_MIN_PX = 72;
+/** Corporate chapter cards — match vol 1–2 linear lane (~11rem). */
+const PATH_CORPORATE_CHAPTER_CARD_MAX_PX = 176;
 const PATH_FOCUS_COLUMN_COUNT = 5;
+/** Fraction of column 6 visible at lane zoom (five full columns + ~10% of col. 6). */
+const PATH_OVERVIEW_COLUMN_PEEK = 0.1;
 const PATH_LATE_FOCUS_START_COL = 3;
 const PATH_COLUMN_AFTER_CH3 = 4;
 const PATH_COLUMN_OVERVIEW_MS = 2250;
@@ -277,16 +281,32 @@ const PATH_COLUMN_REVEAL_EASE = [0.14, 0.92, 0.18, 1];
 /** Slower ease-out for horizontal focus-window pans (1–5 → 3–7). */
 const PATH_FOCUS_PAN_EASE = [0.22, 0.03, 0.26, 1];
 const PATH_ZOOM_OVERVIEW_THRESHOLD = 0.04;
+/** Normalized zoom where five columns + col. 6 peek fill the lane (post-reveal resting view). */
+const PATH_ZOOM_LANE_LEVEL = 0.58;
 const PATH_ZOOM_STEP = 0.12;
 const PATH_ZOOM_WHEEL_STEP = 0.05;
+/** Plug wire → new chapter unlock sequence (2× base pacing). */
+const PLUG_WIRE_TRAVEL_MS = 1840;
+const PLUG_WIRE_SETTLE_MS = 1080;
+const PLUG_LAND_SHAKE_MS = 200;
+const PLUG_LAND_RISE_MS = 380;
+const PLUG_LAND_SQUASH_MS = 360;
+const PLUG_LAND_HOLD_MS = 100;
+const PLUG_LAND_SETTLE_MS = 440;
+const MODULE_PLUG_LAND_MS =
+  PLUG_LAND_SHAKE_MS + PLUG_LAND_RISE_MS + PLUG_LAND_SQUASH_MS + PLUG_LAND_HOLD_MS + PLUG_LAND_SETTLE_MS;
+const MODULE_PLUG_UNLOCK_AT_MS = PLUG_LAND_SHAKE_MS + PLUG_LAND_RISE_MS + PLUG_LAND_SQUASH_MS;
+const PLUG_LAND_RISE_EASE = [0.12, 0.92, 0.22, 1];
+const PLUG_LAND_SQUASH_EASE = [0.55, 0.02, 0.45, 1];
+const PLUG_LAND_SETTLE_EASE = [0.22, 1.12, 0.36, 1];
 
 let pathColumnRevealTimer = 0;
 let pathColumnRevealRunId = 0;
 /** @type {'idle' | 'overview' | 'focus' | 'revealing'} */
 let pathColumnRevealPhase = 'idle';
-/** 0 = full-map overview, 1 = max focus (Vol 1/2 card scale). */
+/** 0 = entire flow, PATH_ZOOM_LANE_LEVEL = five cols + peek, 1 = max focus. */
 let pathZoomLevel = 0;
-/** @type {{ overviewSize: number, focusSize: number, panOverview: number, panFocus: number, panFocusEarly: number, panFocusLate: number, focusStartCol: number, focusEndCol: number } | null} */
+/** @type {{ mapSize: number, laneSize: number, focusSize: number, panMap: number, panLane: number, panFocus: number, panFocusEarly: number, panFocusLate: number, focusStartCol: number, focusEndCol: number } | null} */
 let pathRevealBounds = null;
 let pathFocusWindowKey = '';
 let pathFocusPanAnimRunId = 0;
@@ -392,14 +412,59 @@ function pathDashboardColumnBudget(box) {
   return Math.min(PATH_FOCUS_COLUMN_COUNT, box.maxCol);
 }
 
-function computePathCardSize(box, columnBudget = pathDashboardColumnBudget(box)) {
+/** Largest card size that keeps every grid row inside the path lane height. */
+function computePathRowFitCardSize(box) {
+  if (!box || box.maxRow < 1) return PATH_CARD_MIN_PX;
+  const cardFromHeight = (box.availH - (box.maxRow - 1) * box.rowGap) / box.maxRow;
+  return clampPathCardSizePx(cardFromHeight);
+}
+
+function clampPathCardSizePx(cardSize) {
+  return Math.max(
+    PATH_CARD_MIN_PX,
+    Math.min(PATH_CARD_MAX_PX, Math.floor(cardSize))
+  );
+}
+
+function computePathCardSize(
+  box,
+  columnBudget = pathDashboardColumnBudget(box),
+  { widthOnly = false } = {}
+) {
   const budget = Math.max(1, columnBudget);
   const cardFromWidth = (box.availW - (budget - 1) * box.colGap) / budget;
   const cardFromHeight = (box.availH - (box.maxRow - 1) * box.rowGap) / box.maxRow;
   let cardSize = cardFromWidth;
-  if (!box.isLinear) cardSize = Math.min(cardSize, cardFromHeight);
-  cardSize = Math.min(cardSize, PATH_CARD_MAX_PX);
-  return Math.max(PATH_CARD_MIN_PX, Math.floor(cardSize));
+  if (!box.isLinear && !widthOnly) cardSize = Math.min(cardSize, cardFromHeight);
+  return clampPathCardSizePx(cardSize);
+}
+
+/** Same chapter card size as vol 1–2 (width + row fit, capped to the linear-lane standard). */
+function computeCorporateChapterCardSize(box) {
+  const sized = computePathCardSize(box, pathDashboardColumnBudget(box));
+  const rowFit = box.maxRow > 1 && !box.isLinear ? computePathRowFitCardSize(box) : sized;
+  return clampPathCardSizePx(
+    Math.min(sized, rowFit, PATH_CORPORATE_CHAPTER_CARD_MAX_PX)
+  );
+}
+
+/** Lane zoom — slightly wider framing than focus (5 cols + peek), never larger than standard cards. */
+function computePathOverviewCardSize(box) {
+  const standard = computeCorporateChapterCardSize(box);
+  const cardFromWidth =
+    (box.availW - (PATH_FOCUS_COLUMN_COUNT - 1) * box.colGap) /
+    (PATH_FOCUS_COLUMN_COUNT + PATH_OVERVIEW_COLUMN_PEEK);
+  return clampPathCardSizePx(Math.min(cardFromWidth, standard));
+}
+
+/** Max zoom-in uses the same chapter size as vol 1–2. */
+function computePathRevealFocusSize(box) {
+  return computeCorporateChapterCardSize(box);
+}
+
+/** Left-align overview so columns 1–5 are full width and column 6 only peeks in. */
+function computePathOverviewPanX() {
+  return 0;
 }
 
 function computePathFocusPanX(box, cardSize, startCol = 1, endCol = PATH_FOCUS_COLUMN_COUNT) {
@@ -485,11 +550,18 @@ function applyPathGridColumnTracks(box, cardSize) {
   gridEl.style.justifyContent = 'start';
 }
 
-/** Pan when the grid is narrower than the path lane (centers Vol 1–2 five-column maps). */
+/** Pan when the grid is narrower than the path lane (centers wide branching maps). */
 function computePathGridCenterPan(box, cardSize) {
   const totalW = getPathGridWidth(box, cardSize);
   if (totalW >= box.availW - 2) return 0;
   return (box.availW - totalW) * 0.5;
+}
+
+/** Linear vol. lanes — flush left with copy/lead (no centering pan). */
+function computePathGridAlignPan(box, cardSize) {
+  if (box?.isLinear && isCorporateSkin()) return 0;
+  if (box.maxCol <= PATH_FOCUS_COLUMN_COUNT) return computePathGridCenterPan(box, cardSize);
+  return 0;
 }
 
 function getPathGridWidth(box, cardSize) {
@@ -516,18 +588,35 @@ function setPathMapStageTransform(translateX) {
   stage.style.transform = `translate3d(${translateX}px, 0, 0)`;
 }
 
-function computePathZoomPanX(box, bounds, zoomT, cardSize) {
+function pathZoomCardSize(bounds, zoomT) {
+  const t = clampPathZoom(zoomT);
+  const laneT = PATH_ZOOM_LANE_LEVEL;
+  if (t <= laneT) {
+    const u = laneT > 0 ? t / laneT : 1;
+    return Math.round(lerp(bounds.mapSize, bounds.laneSize, u));
+  }
+  const u = (t - laneT) / (1 - laneT);
+  return Math.round(lerp(bounds.laneSize, bounds.focusSize, u));
+}
+
+function pathZoomPanX(box, bounds, zoomT, cardSize) {
+  const t = clampPathZoom(zoomT);
+  const laneT = PATH_ZOOM_LANE_LEVEL;
   const window = getPathFocusColumnWindow(box);
-  const panOverview = computePathGridCenterPan(box, cardSize);
   const panFocus = computePathFocusPanX(box, cardSize, window.startCol, window.endCol);
-  return lerp(panOverview, panFocus, zoomT);
+  if (t <= laneT) {
+    const u = laneT > 0 ? t / laneT : 1;
+    return lerp(bounds.panMap, bounds.panLane, u);
+  }
+  const u = (t - laneT) / (1 - laneT);
+  return lerp(bounds.panLane, panFocus, u);
 }
 
 function pathCanManualPan() {
   return (
     isCorporateSkin() &&
     pathNeedsColumnReveal() &&
-    pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD &&
+    pathZoomLevel > PATH_ZOOM_LANE_LEVEL + 0.002 &&
     !pathFocusPanAnimating &&
     pathColumnRevealPhase !== 'revealing'
   );
@@ -546,16 +635,17 @@ function clampPathZoom(zoomT) {
 }
 
 function syncPathZoomPhaseFromLevel() {
+  if (pathColumnRevealPhase === 'revealing') return;
   pathColumnRevealPhase =
-    pathZoomLevel <= PATH_ZOOM_OVERVIEW_THRESHOLD ? 'overview' : 'focus';
+    pathZoomLevel <= PATH_ZOOM_LANE_LEVEL + 0.002 ? 'overview' : 'focus';
 }
 
 function applyPathZoomFromLevel(box, bounds, zoomT, { preservePan = false } = {}) {
   if (!box || !bounds) return;
   zoomT = clampPathZoom(zoomT);
   pathZoomLevel = zoomT;
-  const cardSize = Math.round(lerp(bounds.overviewSize, bounds.focusSize, zoomT));
-  const zoomPan = computePathZoomPanX(box, bounds, zoomT, cardSize);
+  const cardSize = pathZoomCardSize(bounds, zoomT);
+  const zoomPan = pathZoomPanX(box, bounds, zoomT, cardSize);
   const panX = preservePan
     ? clampPathStagePan(pathStagePanX, box, cardSize)
     : clampPathStagePan(zoomPan, box, cardSize);
@@ -605,7 +695,7 @@ function onPathMapWheel(e) {
     const box = measurePathLayoutBox();
     const bounds = refreshPathRevealBounds(box);
     if (!box || !bounds) return;
-    const cardSize = Math.round(lerp(bounds.overviewSize, bounds.focusSize, pathZoomLevel));
+    const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
     setPathMapStageTransform(clampPathStagePan(pathStagePanX - e.deltaX, box, cardSize));
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
@@ -665,7 +755,7 @@ function wirePathPanDrag() {
       const box = measurePathLayoutBox();
       const bounds = refreshPathRevealBounds(box);
       if (!box || !bounds) return;
-      const cardSize = Math.round(lerp(bounds.overviewSize, bounds.focusSize, pathZoomLevel));
+      const cardSize = pathZoomCardSize(bounds, pathZoomLevel);
       const { min, max } = getPathPanRange(box, cardSize);
       if (max - min < 4) return;
 
@@ -770,19 +860,28 @@ function resetPathColumnReveal() {
   updatePathZoomControls();
 }
 
-/** Wide volumes — zoom scales cards; zoom out fits all columns, zoom in fits five. */
+/** Wide volumes — map fits all columns; lane shows five + peek; zoom in focuses five. */
 function refreshPathRevealBounds(box, modules = getRuntimeModules()) {
   if (!box || box.maxCol <= PATH_FOCUS_COLUMN_COUNT) {
     pathRevealBounds = null;
     return null;
   }
-  const overviewSize = computePathCardSize(box, box.maxCol);
-  const focusSize = computePathCardSize(box, PATH_FOCUS_COLUMN_COUNT);
+  const focusSize = computePathRevealFocusSize(box);
+  let mapSize = computePathCardSize(box, box.maxCol);
+  let laneSize = computePathOverviewCardSize(box);
+  if (laneSize >= focusSize) {
+    laneSize = clampPathCardSizePx(focusSize - 12);
+  }
+  if (mapSize >= laneSize) {
+    mapSize = Math.max(PATH_CARD_MIN_PX, laneSize - 12);
+  }
   const window = getPathFocusColumnWindow(box, modules);
   pathRevealBounds = {
-    overviewSize,
+    mapSize,
+    laneSize,
     focusSize,
-    panOverview: computePathGridCenterPan(box, overviewSize),
+    panMap: computePathGridCenterPan(box, mapSize),
+    panLane: computePathOverviewPanX(),
     panFocus: computePathFocusPanX(box, focusSize, window.startCol, window.endCol),
     panFocusEarly: computePathFocusPanX(box, focusSize, 1, PATH_FOCUS_COLUMN_COUNT),
     panFocusLate: computePathFocusPanX(
@@ -802,6 +901,11 @@ function applyPathRevealOverview(box, bounds = pathRevealBounds) {
   applyPathZoomFromLevel(box, bounds, 0);
 }
 
+function applyPathRevealLane(box, bounds = pathRevealBounds) {
+  if (!bounds || !box) return;
+  applyPathZoomFromLevel(box, bounds, PATH_ZOOM_LANE_LEVEL);
+}
+
 function applyPathRevealFocus(box, bounds = pathRevealBounds) {
   if (!bounds || !box) return;
   refreshPathRevealBounds(box);
@@ -814,10 +918,10 @@ function applyPathRevealFocus(box, bounds = pathRevealBounds) {
 function updatePathColumnRevealClasses() {
   const modulesEl = document.getElementById('modules');
   const needs = pathNeedsColumnReveal();
-  const isOverview = needs && pathZoomLevel <= PATH_ZOOM_OVERVIEW_THRESHOLD;
+  const isOverview = needs && pathZoomLevel <= PATH_ZOOM_LANE_LEVEL + 0.002;
   const inFocus =
     needs &&
-    (pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD ||
+    (pathZoomLevel > PATH_ZOOM_LANE_LEVEL + 0.002 ||
       pathColumnRevealPhase === 'revealing' ||
       pathFocusPanAnimating);
   const box = needs ? measurePathLayoutBox() : null;
@@ -831,9 +935,7 @@ function updatePathColumnRevealClasses() {
   pathMapEl?.classList.toggle('is-path-focus-late', inFocus && window?.mode === 'late');
   let panEnabled = false;
   if (inFocus && box && pathRevealBounds) {
-    const cardSize = Math.round(
-      lerp(pathRevealBounds.overviewSize, pathRevealBounds.focusSize, pathZoomLevel)
-    );
+    const cardSize = pathZoomCardSize(pathRevealBounds, pathZoomLevel);
     const { min, max } = getPathPanRange(box, cardSize);
     panEnabled = max - min > 4;
   }
@@ -943,9 +1045,18 @@ function schedulePathColumnReveal() {
     return;
   }
 
+  const box = measurePathLayoutBox();
+  const bounds = box ? refreshPathRevealBounds(box) : null;
   pathColumnRevealPhase = 'overview';
+  pathZoomLevel = 0;
+  if (box && bounds) {
+    applyPathRevealOverview(box, bounds);
+  } else {
+    updatePathColumnRevealClasses();
+    setPathMapStageTransform(0);
+  }
   updatePathColumnRevealClasses();
-  setPathMapStageTransform(0);
+  updatePathZoomControls();
 
   const runId = ++pathColumnRevealRunId;
   pathColumnRevealTimer = window.setTimeout(() => {
@@ -953,6 +1064,31 @@ function schedulePathColumnReveal() {
     if (runId !== pathColumnRevealRunId) return;
     void runPathColumnFocusReveal(runId);
   }, PATH_COLUMN_OVERVIEW_MS);
+}
+
+/** Kick overview → focus zoom after volume change once the path lane has measurable layout. */
+function requestPathColumnReveal(attempt = 0) {
+  if (!isCorporateSkin() || !pathMapEl || !gridEl) return;
+
+  if (!pathNeedsColumnReveal()) {
+    resetPathColumnReveal();
+    syncCorporatePathViewport();
+    return;
+  }
+
+  const box = measurePathLayoutBox();
+  if (!box) {
+    if (attempt < 20) {
+      requestAnimationFrame(() => requestPathColumnReveal(attempt + 1));
+    }
+    return;
+  }
+
+  cancelPathColumnReveal();
+  pathColumnRevealPhase = 'idle';
+  pathZoomLevel = 0;
+  pathRevealBounds = null;
+  syncCorporatePathViewport();
 }
 
 async function runPathColumnFocusReveal(runId) {
@@ -969,8 +1105,8 @@ async function runPathColumnFocusReveal(runId) {
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced) {
-    pathColumnRevealPhase = 'focus';
-    applyPathRevealFocus(box, bounds);
+    pathColumnRevealPhase = 'overview';
+    applyPathRevealLane(box, bounds);
     updatePathColumnRevealClasses();
     queueIntroCordLayout();
     return;
@@ -983,7 +1119,7 @@ async function runPathColumnFocusReveal(runId) {
   let lastCordSync = 0;
   await tweenLeaderboard(PATH_COLUMN_REVEAL_MS, PATH_COLUMN_REVEAL_EASE, (t) => {
     if (runId !== pathColumnRevealRunId) return;
-    applyPathZoomFromLevel(box, bounds, t);
+    applyPathZoomFromLevel(box, bounds, t * PATH_ZOOM_LANE_LEVEL);
     updatePathColumnRevealClasses();
     refreshSubwayCordGeometry();
     applyCordRopePaths(cordFloatPhase);
@@ -996,7 +1132,7 @@ async function runPathColumnFocusReveal(runId) {
 
   if (runId !== pathColumnRevealRunId) return;
 
-  applyPathRevealFocus(box, bounds);
+  applyPathRevealLane(box, bounds);
   updatePathColumnRevealClasses();
   updatePathZoomControls();
   queueIntroCordLayout();
@@ -1044,11 +1180,12 @@ function syncCorporatePathViewport() {
   const needsReveal = pathNeedsColumnReveal();
   if (!needsReveal) {
     resetPathColumnReveal();
-    const cardSize = computePathCardSize(box, pathDashboardColumnBudget(box));
+    const cardSize = computeCorporateChapterCardSize(box);
     applyPathGridCardSize(box, cardSize);
     const window = getPathFocusColumnWindow(box);
-    const panX =
-      box.maxCol <= PATH_FOCUS_COLUMN_COUNT
+    const panX = box.isLinear
+      ? computePathGridAlignPan(box, cardSize)
+      : box.maxCol <= PATH_FOCUS_COLUMN_COUNT
         ? computePathGridCenterPan(box, cardSize)
         : computePathFocusPanX(box, cardSize, window.startCol, window.endCol);
     pathStagePanX = panX;
@@ -1066,7 +1203,7 @@ function syncCorporatePathViewport() {
   if (!bounds) return;
 
   applyPathZoomFromLevel(box, bounds, pathZoomLevel, {
-    preservePan: pathZoomLevel > PATH_ZOOM_OVERVIEW_THRESHOLD
+    preservePan: pathZoomLevel > PATH_ZOOM_LANE_LEVEL + 0.002
   });
   updatePathColumnRevealClasses();
   updatePathZoomControls();
@@ -1713,6 +1850,7 @@ function setCorporateViewVolume(volume, { animate = true } = {}) {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         pathMap.classList.remove('is-volume-enter-from-right', 'is-volume-enter-from-left');
+        requestPathColumnReveal(0);
         window.setTimeout(() => modulesEl.classList.remove('is-volume-switching'), 400);
       });
     });
@@ -1722,6 +1860,7 @@ function setCorporateViewVolume(volume, { animate = true } = {}) {
   renderModules();
   syncCorporatePathMapToCatalog();
   queueIntroCordLayout();
+  requestPathColumnReveal(0);
 }
 
 function activateCorporateVolumeNav(volume) {
@@ -2102,6 +2241,7 @@ function bootstrapCorporateChapter3View() {
   applyCorporateVolumeCheatUi();
   startCordFloat();
   queueIntroCordLayout();
+  requestPathColumnReveal(0);
 }
 
 function panCameraToY(targetY, durationMs) {
@@ -2276,7 +2416,7 @@ function patchModulesFromRuntime(unlockedIds = []) {
       syncDiamondBadge(thumb, mod);
     }
 
-    if (unlockedSet.has(mod.id)) {
+    if (unlockedSet.has(mod.id) && !wrap.classList.contains('is-plug-landing')) {
       wrap.classList.add('intro-module-wrap--just-unlocked');
       window.setTimeout(() => wrap.classList.remove('intro-module-wrap--just-unlocked'), 1200);
     }
@@ -3779,7 +3919,6 @@ function runCordGrowAnimation(edgeKeyStr, runId) {
         ? [seg.group]
         : [];
     for (const host of plugHosts) host.classList.add('is-plugging');
-    const group = seg.group ?? plugHosts[0] ?? null;
 
     const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
     const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
@@ -3789,12 +3928,6 @@ function runCordGrowAnimation(edgeKeyStr, runId) {
       finish();
       return;
     }
-
-    const NS = 'http://www.w3.org/2000/svg';
-    const plugHead = document.createElementNS(NS, 'circle');
-    plugHead.setAttribute('class', 'intro-cord-plug-head');
-    plugHead.setAttribute('r', seg.isSubway ? '5' : '6');
-    group?.appendChild(plugHead);
 
     if (seg.knotStart) {
       seg.knotStart.setAttribute('cx', String(seg.p0.x));
@@ -3816,7 +3949,6 @@ function runCordGrowAnimation(edgeKeyStr, runId) {
 
     const tick = (now) => {
       if (runId !== corporatePopRun) {
-        plugHead.remove();
         finish();
         return;
       }
@@ -3825,10 +3957,6 @@ function runCordGrowAnimation(edgeKeyStr, runId) {
       const eased = easeOutCubic(t);
       const offset = len * (1 - eased);
       for (const path of dashLayers) path.style.strokeDashoffset = String(offset);
-
-      const pt = guide.getPointAtLength(Math.min(len, len * eased));
-      plugHead.setAttribute('cx', String(pt.x));
-      plugHead.setAttribute('cy', String(pt.y));
 
       if (t > 0.58) {
         seg.plugSettle = ((t - 0.58) / 0.42) * 0.55;
@@ -3844,7 +3972,6 @@ function runCordGrowAnimation(edgeKeyStr, runId) {
         for (const path of dashLayers) {
           path.style.strokeDashoffset = '0';
         }
-        plugHead.remove();
         if (seg.knotEnd) {
           seg.knotEnd.setAttribute('cx', String(seg.p3.x));
           seg.knotEnd.setAttribute('cy', String(seg.p3.y));
@@ -4177,16 +4304,49 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
   introState.pluggingEdge = edgeKeyStr;
 
   let landed = false;
+  let playApplied = false;
+  let plugStarGateBlocked = false;
+
+  const applyUnlockAtSquash = () => {
+    if (playApplied) return;
+    playApplied = true;
+
+    const runtimeBefore = getRuntimeModule(sourceMod.id) ?? sourceMod;
+    const playMode = playModeBeforeOutcome(sourceMod.id);
+    const { newlyUnlocked, starGateBlocked } = applyPlayOutcome(sourceMod.id, outcome);
+    plugStarGateBlocked = starGateBlocked;
+    recordPlayActivity(runtimeBefore, outcome, newlyUnlocked, { playMode });
+
+    const targetCard = targetWrap?.querySelector('.module-card');
+    targetCard?.querySelector('.module-padlock')?.classList.add('is-opening');
+
+    patchModulesFromRuntime(newlyUnlocked);
+    onModuleProgress(newlyUnlocked, sourceMod.id, { starGateBlocked });
+
+    if (starGateBlocked) {
+      sourceCard?.classList.remove('is-plug-source');
+      focusModuleCard(sourceMod.id);
+    }
+  };
+
   const finish = () => {
     if (landed) return;
     landed = true;
     stopPlugAnimation();
     clearTimeout(safetyTimer);
 
-    targetWrap?.classList.remove('is-plug-target');
+    targetWrap?.classList.remove('is-plug-target', 'is-plug-landing');
     hideCordTooltip();
 
-    completeModulePlay(sourceMod, outcome, sourceCard, targetId);
+    if (!playApplied) applyUnlockAtSquash();
+
+    if (!plugStarGateBlocked) {
+      if (targetId) {
+        setNextPlayModule(targetId);
+        focusModuleCard(targetId);
+      }
+      sourceCard?.classList.remove('is-plug-source');
+    }
 
     clearPlugState();
     queueIntroCordLayout();
@@ -4211,7 +4371,6 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
           )
         : [];
     for (const host of plugHosts) host.classList.add('is-plugging');
-    const group = seg.group ?? plugHosts[0] ?? null;
 
     const body = seg.paths.find((p) => p.classList.contains('intro-cord-rope--active'));
     const sheen = seg.paths.find((p) => p.classList.contains('intro-cord-rope--sheen'));
@@ -4221,12 +4380,6 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
       finish();
       return;
     }
-
-    const NS = 'http://www.w3.org/2000/svg';
-    const plugHead = document.createElementNS(NS, 'circle');
-    plugHead.setAttribute('class', 'intro-cord-plug-head');
-    plugHead.setAttribute('r', seg.isSubway ? '5' : '6');
-    group?.appendChild(plugHead);
 
     if (seg.knotStart) {
       seg.knotStart.setAttribute('cx', String(seg.p0.x));
@@ -4242,7 +4395,7 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
       path.style.strokeDashoffset = String(len);
     }
 
-    const duration = 920;
+    const duration = PLUG_WIRE_TRAVEL_MS;
     const start = performance.now();
     const label = cordChoiceLabel(outcome);
     let plugTooltipShown = false;
@@ -4258,7 +4411,6 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
         path.style.strokeDasharray = String(endLen);
         path.style.strokeDashoffset = '0';
       }
-      plugHead.remove();
       for (const host of plugHosts) {
         host.classList.remove('is-plugging');
         host.classList.add('is-filled');
@@ -4267,9 +4419,29 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
         seg.knotEnd.setAttribute('cx', String(seg.p3.x));
         seg.knotEnd.setAttribute('cy', String(seg.p3.y));
         seg.knotEnd.style.opacity = '1';
-        seg.knotEnd.classList.add('is-plug-landed');
       }
-      animateCordPlugSettle(seg, finish);
+
+      let landingDone = !targetWrap;
+      let settleDone = false;
+      const tryFinish = () => {
+        if (landingDone && settleDone) finish();
+      };
+
+      animateCordPlugSettle(
+        seg,
+        () => {
+          settleDone = true;
+          tryFinish();
+        },
+        { durationMs: PLUG_WIRE_SETTLE_MS }
+      );
+
+      if (targetWrap) {
+        void animateModulePlugLanding(targetWrap, applyUnlockAtSquash, () => {
+          landingDone = true;
+          tryFinish();
+        });
+      }
     };
 
     const tick = (now) => {
@@ -4282,9 +4454,6 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
       for (const path of dashLayers) path.style.strokeDashoffset = String(offset);
 
       const pt = plugPointAt(eased);
-      plugHead.setAttribute('cx', String(pt.x));
-      plugHead.setAttribute('cy', String(pt.y));
-
       if (label) {
         if (!plugTooltipShown) {
           plugTooltipShown = true;
@@ -4312,7 +4481,10 @@ function animatePlugWire(sourceMod, outcome, sourceCard) {
     introState.plugRaf = requestAnimationFrame(tick);
   };
 
-  const safetyTimer = window.setTimeout(finish, 1600);
+  const safetyTimer = window.setTimeout(
+    finish,
+    PLUG_WIRE_TRAVEL_MS + PLUG_WIRE_SETTLE_MS + MODULE_PLUG_LAND_MS + 800
+  );
 
   measureIntroCords({ onReady: runPlugAnimation });
 }
@@ -5323,10 +5495,84 @@ function stopCordFloat() {
   cordFloatRaf = 0;
 }
 
-function animateCordPlugSettle(seg, onDone) {
+function applyPlugLandTransform(card, scale, translateX = 0) {
+  card.style.transform = `translate3d(${translateX}px, 0, 0) scale(${scale})`;
+  card.style.transformOrigin = 'center center';
+}
+
+function clearPlugLandTransform(card) {
+  card.style.transform = '';
+  card.style.transformOrigin = '';
+  card.style.willChange = '';
+}
+
+/** Shake → ease up to 1.2 → ease down to 0.9 (unlock) → ease settle to 1.0. */
+async function animateModulePlugLanding(targetWrap, onUnlockAtSquash, onComplete) {
+  const card = targetWrap?.querySelector('.module-card');
+  if (!targetWrap || !card) {
+    onUnlockAtSquash?.();
+    onComplete?.();
+    return;
+  }
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  targetWrap.classList.remove('is-plug-target');
+  targetWrap.classList.add('is-plug-landing');
+
+  if (reduced) {
+    onUnlockAtSquash?.();
+    targetWrap.classList.remove('is-plug-landing');
+    card.classList.remove('is-plug-landing');
+    onComplete?.();
+    return;
+  }
+
+  card.classList.add('is-plug-landing');
+  card.style.willChange = 'transform';
+
+  try {
+    let scale = 1;
+    await tweenLeaderboard(PLUG_LAND_SHAKE_MS, [0.25, 1, 0.45, 1], (t) => {
+      const wobble = Math.sin(t * Math.PI * 2.75) * (1 - t) * 4.5;
+      scale = lerp(1, 1.06, easeOutCubic(t));
+      applyPlugLandTransform(card, scale, wobble);
+    });
+
+    const riseFrom = scale;
+    await tweenLeaderboard(PLUG_LAND_RISE_MS, PLUG_LAND_RISE_EASE, (t) => {
+      scale = lerp(riseFrom, 1.2, easeOutBack(t));
+      applyPlugLandTransform(card, scale, 0);
+    });
+
+    const squashFrom = scale;
+    await tweenLeaderboard(PLUG_LAND_SQUASH_MS, PLUG_LAND_SQUASH_EASE, (t) => {
+      scale = lerp(squashFrom, 0.9, easeInOutCubic(t));
+      applyPlugLandTransform(card, scale, 0);
+    });
+
+    onUnlockAtSquash?.();
+
+    await tweenLeaderboard(PLUG_LAND_HOLD_MS, [0, 0, 1, 1], () => {
+      applyPlugLandTransform(card, 0.9, 0);
+    });
+
+    const settleFrom = 0.9;
+    await tweenLeaderboard(PLUG_LAND_SETTLE_MS, PLUG_LAND_SETTLE_EASE, (t) => {
+      scale = lerp(settleFrom, 1, easeOutBack(t));
+      applyPlugLandTransform(card, scale, 0);
+    });
+  } finally {
+    clearPlugLandTransform(card);
+    card.classList.remove('is-plug-landing');
+    targetWrap.classList.remove('is-plug-landing');
+    onComplete?.();
+  }
+}
+
+function animateCordPlugSettle(seg, onDone, { durationMs = 540 } = {}) {
   const from = seg.plugSettle ?? 0;
   const start = performance.now();
-  const duration = 540;
+  const duration = durationMs;
 
   const tick = (now) => {
     const t = Math.min(1, (now - start) / duration);

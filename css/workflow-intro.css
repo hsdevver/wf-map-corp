@@ -738,10 +738,7 @@ html[data-skin='space'] .intro-viewport.is-volume-overview-visible .intro-chapte
 }
 
 .intro-cord-plug-head {
-  fill: #fff;
-  stroke: var(--lane-fill-done, var(--theme-color, #6baed0));
-  stroke-width: 2.5;
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--theme-color, #6baed0) 55%, transparent));
+  display: none;
   pointer-events: none;
 }
 
@@ -826,16 +823,35 @@ html[data-skin='space'] .intro-viewport.is-volume-overview-visible .intro-chapte
 .intro-module-wrap.is-plug-target .module-card.locked {
   outline: 2px solid color-mix(in srgb, var(--theme-color, #6baed0) 55%, transparent);
   outline-offset: 3px;
-  animation: intro-plug-target 1.1s ease-in-out infinite;
 }
 
-@keyframes intro-plug-target {
-  0%,
-  100% {
-    filter: brightness(1);
+html.is-plug-active .intro-module-wrap.is-plug-landing > .module-card.is-plug-landing {
+  animation: none;
+  transform-origin: center center;
+  outline: none;
+  will-change: transform;
+}
+
+.module-padlock.is-opening .lock-shackle {
+  transform-origin: 12px 14px;
+  animation: intro-padlock-shackle-open 440ms ease-out forwards;
+}
+
+.module-padlock.is-opening::before {
+  animation: intro-padlock-badge-fade 400ms ease-out forwards;
+}
+
+@keyframes intro-padlock-shackle-open {
+  to {
+    transform: translateY(-9px) rotate(-12deg);
+    opacity: 0;
   }
-  50% {
-    filter: brightness(1.12);
+}
+
+@keyframes intro-padlock-badge-fade {
+  to {
+    opacity: 0;
+    transform: scale(0.82);
   }
 }
 

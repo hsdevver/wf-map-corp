@@ -488,7 +488,7 @@ export const CHAPTER_3_MODULES = [
     row: 2,
     chapter: '3B',
     title: 'Center merge',
-    description: 'B lane — receives merges from 2B and 2C; feeds 4B.',
+    description: 'B lane — merges from 2B and 2C; branch up to 4A or continue to 4B.',
     progress: 0,
     locked: true,
     hue: 196,
@@ -590,6 +590,7 @@ export const CHAPTER_3_EDGES = [
   ['c3m2c', 'c3m3b'],
   ['c3m3a', 'c3m4a'],
   ['c3m3a', 'c3m4b'],
+  ['c3m3b', 'c3m4a'],
   ['c3m3b', 'c3m4b'],
   ['c3m4a', 'c3m5'],
   ['c3m4b', 'c3m5'],
@@ -683,6 +684,15 @@ export const CHAPTER_3_CORD_ANCHORS = {
     subwayLane: 1,
     slack: 1.1,
     sagSign: 1
+  },
+  'c3m3b|c3m4a': {
+    from: 'right',
+    to: 'left',
+    fromAlong: SUBWAY_JUNCTION_ALONG.center,
+    toAlong: SUBWAY_JUNCTION_ALONG.upper,
+    subwayLane: 0,
+    slack: 1.1,
+    sagSign: -1
   },
   'c3m4a|c3m5': {
     from: 'right',
@@ -873,6 +883,16 @@ export const CHAPTER_3_PLAY_SCENARIOS = {
     choicesPrompt: 'From 3B',
     outcomes: [
       {
+        id: 'to-4a',
+        label: 'Branch up to 4A',
+        direction: 'up',
+        plugWire: true,
+        unlocks: ['c3m4a'],
+        fills: ['c3m3b|c3m4a'],
+        lastChoice: 'Up to A',
+        result: 'Chapter 4A opens on the A row.'
+      },
+      {
         id: 'to-4b',
         label: 'Continue to 4B',
         plugWire: true,
@@ -1047,6 +1067,19 @@ export const PATH_ROUTE_VARIANTS = {
         'c3m4b|c3m5',
         'c3m5|c3m6b',
         'c3m6b|c3m7'
+      ]
+    },
+    {
+      id: 'via-b-b-a',
+      along: SUBWAY_JUNCTION_ALONG.upper,
+      label: '2B·3B·4A·6A',
+      edges: [
+        'c3m1|c3m2b',
+        'c3m2b|c3m3b',
+        'c3m3b|c3m4a',
+        'c3m4a|c3m5',
+        'c3m5|c3m6a',
+        'c3m6a|c3m7'
       ]
     },
     {
