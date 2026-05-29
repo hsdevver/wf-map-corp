@@ -42,9 +42,10 @@ import {
   wireLayoutCheat
 } from './layout-cheat.js';
 import { getFlowWiringMode, initFlowWiringCheat, setFlowWiringMode } from './flow-wiring-cheat.js';
+import { getLockSizeScale, initLockSizeCheat, LOCK_SIZE_SCALES, setLockSizeScale } from './lock-size-cheat.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = 'corp-18';
+const PANEL_VERSION = 'corp-19';
 
 function isWorkflowIntroPage() {
   return /\/workflow-intro\//.test(window.location.pathname);
@@ -59,6 +60,7 @@ function panelIsCurrent(panel) {
   if (isWorkflowIntroPage()) {
     if (!panel.querySelector('[data-cheat-layout]')) return false;
     if (!panel.querySelector('[data-flow-wiring]')) return false;
+    if (!panel.querySelector('[data-lock-size-scale]')) return false;
   }
   if (!panel.querySelector('.cheat-panel__body')) return false;
   return true;
@@ -269,6 +271,20 @@ function buildPanel() {
     </section>
     ${
       showPathReset
+        ? `<section class="cheat-panel__section" aria-labelledby="cheat-lock-size-label">
+      <span class="cheat-panel__label" id="cheat-lock-size-label">Lock icon size</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Module padlock scale" data-lock-size>
+        ${LOCK_SIZE_SCALES.map(
+          (scale) =>
+            `<button type="button" class="cheat-panel__seg-btn" data-lock-size-scale="${scale}">${scale === '1' ? '1×' : `${scale}×`}</button>`
+        ).join('')}
+      </div>
+      <p class="cheat-panel__sound-note">Scales the padlock on locked chapter cards.</p>
+    </section>`
+        : ''
+    }
+    ${
+      showPathReset
         ? `<section class="cheat-panel__section" aria-labelledby="cheat-path-label">
       <span class="cheat-panel__label" id="cheat-path-label">Path progress</span>
       <span class="cheat-panel__label" id="cheat-flow-wiring-label">Flow wiring</span>
@@ -383,6 +399,11 @@ function syncPanelUi(panel) {
   const flowWiring = getFlowWiringMode();
   panel.querySelectorAll('[data-flow-wiring-mode]').forEach((btn) => {
     btn.classList.toggle('is-active', btn.dataset.flowWiringMode === flowWiring);
+  });
+
+  const lockSize = getLockSizeScale();
+  panel.querySelectorAll('[data-lock-size-scale]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.lockSizeScale === lockSize);
   });
 }
 
@@ -557,6 +578,13 @@ function wirePanel(panel) {
     });
   });
 
+  panel.querySelectorAll('[data-lock-size-scale]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setLockSizeScale(btn.dataset.lockSizeScale);
+      syncPanelUi(panel);
+    });
+  });
+
   if (panel.querySelector('[data-cheat-layout]')) wireLayoutCheat(panel);
 }
 
@@ -582,6 +610,7 @@ export function initCheatPanel() {
     initModuleLayout();
     initLayoutCheat();
     initFlowWiringCheat();
+    initLockSizeCheat();
     initAmbientMusicSync();
     initModuleCardSounds();
     window.addEventListener('pageshow', onPageShow);

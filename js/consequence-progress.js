@@ -4,7 +4,7 @@ import {
   CHAPTER_3_END_MODULE_ID,
   getChapterGraph,
   MODULE_STAR_UNLOCK_GATES
-} from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
+} from './consequence-flow.js?v=flow-wiring-m8-skills-v1';
 import {
   FLOW_WIRING_3B_4A_KEY,
   getFlowWiringMode,

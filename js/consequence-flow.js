@@ -8,7 +8,7 @@ import {
  * Shared consequence-flow graph (workflow-intro + flow-map).
  * Bump FLOW_GRAPH_BUILD when changing module topology (cache-bust ?v= on imports).
  */
-export const FLOW_GRAPH_BUILD = 'flow-wiring-3b-4a-v2';
+export const FLOW_GRAPH_BUILD = 'flow-wiring-m8-skills-v1';
 
 /**
  * Volume 1 — classic split (3A / 3B) → convergence (4) → hub (5).
@@ -126,7 +126,14 @@ export const CONSEQUENCE_MODULES = [
     description: 'Merge point — both branches rejoin here before the final step.',
     progress: 0,
     locked: true,
-    hue: 194
+    hue: 194,
+    modal: {
+      skills: [
+        { label: 'Problem Solving' },
+        { label: 'Accountability' },
+        { label: 'Communication' }
+      ]
+    }
   },
   {
     id: 'm5',

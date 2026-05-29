@@ -1,6 +1,7 @@
 /**
  * Corporate dashboard opening sequence — single async director (playIntro).
  * All timing is JS-driven (Web Animations API); no CSS transition on intro targets during playback.
+ * Each beat runs to completion before the next begins (total duration = sum of step durations).
  */
 
 import {
@@ -324,58 +325,54 @@ export async function playPathMapColumnReveal(deps, board, options = {}) {
       .map((id) => gridEl?.querySelector(`[data-module-anchor="${id}"]`))
       .filter(Boolean);
 
-    await Promise.all(
-      wraps.map((wrap) =>
-        tween(
-          wrap,
-          [
-            { opacity: 0, transform: 'none' },
-            { opacity: 1, transform: 'none' }
-          ],
-          PATH_COLUMN_CARD_POP_MS,
-          EASE_CARD_POP
-        )
-      )
-    );
+    for (const wrap of wraps) {
+      if (!ok()) return;
+      await tween(
+        wrap,
+        [
+          { opacity: 0, transform: 'none' },
+          { opacity: 1, transform: 'none' }
+        ],
+        PATH_COLUMN_CARD_POP_MS,
+        EASE_CARD_POP
+      );
+    }
     if (!ok()) return;
 
     const edgeKeys = corporateIntroCordKeysFromColumn(col, modules).filter((k) => !revealedCordKeys.has(k));
-    if (!edgeKeys.length) continue;
+    if (!edgeKeys.length) {
+      await delay(PATH_COLUMN_REVEAL_TAIL_MS);
+      continue;
+    }
 
     await delay(PATH_COLUMN_REVEAL_GAP_MS);
     if (!ok()) return;
 
-    const jobs = [];
-    const growingHosts = [];
     for (const key of edgeKeys) {
+      if (!ok()) return;
       const seg = deps.findCordSegment(key);
       if (!seg) continue;
+
       const hosts = cordHostsForSegment(seg, deps.connectorsEl, key);
       markCordTubeHosts(hosts, { growing: true });
-      growingHosts.push(...hosts);
+
       const job = createTubeDrawJob(seg);
-      if (!job) continue;
+      if (!job) {
+        markCordTubeHosts(hosts, { growing: false });
+        revealedCordKeys.add(key);
+        continue;
+      }
+
       setTubeHidden(job);
-      jobs.push(job);
-    }
+      deps.applyCordRopePaths(deps.getCordFloatPhase());
+      await animateTubeDraw(job, INTRO_CORD_GROW_MS, { ease: easeInOutCubic });
+      if (!ok()) return;
 
-    deps.applyCordRopePaths(deps.getCordFloatPhase());
-    await Promise.all(
-      jobs.map((job) =>
-        animateTubeDraw(job, INTRO_CORD_GROW_MS, { ease: easeInOutCubic }).then(() => {
-          if (!ok()) return;
-          const hosts = cordHostsForSegment(job.seg, deps.connectorsEl, job.seg.key);
-          for (const host of hosts) {
-            host.classList.add('is-intro-revealed');
-            host.classList.remove('is-intro-line-growing');
-          }
-        })
-      )
-    );
-    markCordTubeHosts(growingHosts, { growing: false });
-    if (!ok()) return;
-
-    for (const key of edgeKeys) {
+      markCordTubeHosts(hosts, { growing: false });
+      for (const host of cordHostsForSegment(seg, deps.connectorsEl, key)) {
+        host.classList.add('is-intro-revealed');
+        host.classList.remove('is-intro-line-growing');
+      }
       revealedCordKeys.add(key);
     }
 
@@ -407,14 +404,11 @@ async function act3SideColumn(board, runId, deps) {
     { opacity: 1, transform: 'translate3d(0, 0, 0)' }
   ];
 
-  await Promise.all(
-    blocks.map((block, index) =>
-      delay(index * INTRO_SIDE_STAGGER_MS).then(async () => {
-        if (runId !== directorRun) return;
-        await tweenFadeSlide(block, sideKeyframes, INTRO_SIDE_CARD_MS);
-      })
-    )
-  );
+  for (let index = 0; index < blocks.length; index++) {
+    if (runId !== directorRun) return;
+    if (index > 0) await delay(INTRO_SIDE_STAGGER_MS);
+    await tweenFadeSlide(blocks[index], sideKeyframes, INTRO_SIDE_CARD_MS);
+  }
 
   if (runId !== directorRun) return;
 

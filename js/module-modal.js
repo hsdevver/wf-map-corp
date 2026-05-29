@@ -2,7 +2,7 @@ import {
   getChapterCapsLabel,
   MODULE_SKILL_FOCUS,
   MODULE_STAR_UNLOCK_GATES
-} from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
+} from './consequence-flow.js?v=flow-wiring-m8-skills-v1';
 import { recordPlayActivity } from './intro-activity-log.js';
 import {
   applyPlayOutcome,
@@ -28,6 +28,9 @@ const MODAL_STAR_SVG =
 const MODAL_PLAY_ICON_SVG =
   '<svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M3.15 1.65 10.35 6 3.15 10.35z"/></svg>';
 
+const MODAL_REPEAT_ICON_SVG =
+  '<svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M6 2.25V1L3.5 3.25 6 5.25V3.75c1.52 0 2.75 1.23 2.75 2.75S7.52 9.25 6 9.25 3.25 8.02 3.25 6.5H2c0 2.21 1.79 4 4 4s4-1.79 4-4-1.79-4-4-4Zm0 7.5V11l2.5-2-2.5-2v1.5c-1.52 0-2.75-1.23-2.75-2.75S4.48 2.75 6 2.75 8.75 3.98 8.75 5.5H10c0-2.21-1.79-4-4-4s-4 1.79-4 4 1.79 4 4 4Z"/></svg>';
+
 /** Sidebar labels for corporate chapter modal (wireframe layout). */
 const CORPORATE_MODAL_SKILL_NAV = [
   { label: 'Problem Solving' },
@@ -37,7 +40,7 @@ const CORPORATE_MODAL_SKILL_NAV = [
 ];
 
 /** Bumped when modal DOM structure changes — stale nodes are rebuilt on load. */
-const MODAL_DOM_VERSION = 4;
+const MODAL_DOM_VERSION = 6;
 
 /** Maps MODULE_SKILL_FOCUS keys to CORPORATE_MODAL_SKILL_NAV row index. */
 const CORPORATE_SKILL_FOCUS_INDEX = {
@@ -46,10 +49,16 @@ const CORPORATE_SKILL_FOCUS_INDEX = {
   communication: 2
 };
 
-/** Expanded chapter panel — share of #modules (width × height), centered. */
+/** Expanded chapter panel — share of main column (width × height), centered. */
 const CORPORATE_MODULES_PANEL_RATIO = 0.6;
+/** Played-chapter feedback — same panel footprint as chapter detail. */
+const CORPORATE_MODULES_PANEL_FEEDBACK_RATIO = 0.6;
+/** Taller than width ratio so the hero backdrop feels closer to chapter-card proportions. */
+const CORPORATE_MODULES_PANEL_HEIGHT_RATIO = 0.84;
+/** Minimum panel height ÷ width (chapter cards are 1:1; modal body sits below the hero). */
+const CORPORATE_MODULES_PANEL_MIN_ASPECT = 0.62;
 const CORPORATE_MODULES_PANEL_MIN_W = 320;
-const CORPORATE_MODULES_PANEL_MIN_H = 220;
+const CORPORATE_MODULES_PANEL_MIN_H = 280;
 
 const modalState = {
   open: false,
@@ -83,12 +92,17 @@ let skillsNavEl = null;
 let descEl = null;
 let statsEl = null;
 let detailBlock = null;
+let bodyMainEl = null;
 let feedbackBlock = null;
+let feedbackTopEl = null;
 let feedbackSkillsEl = null;
 let feedbackPointsEl = null;
+let feedbackPointsCurrentEl = null;
+let feedbackPointsMaxEl = null;
 let feedbackDescEl = null;
 let feedbackTitleEl = null;
 let feedbackTextEl = null;
+let feedbackBottomEl = null;
 let headerPointsEl = null;
 let playBlock = null;
 let playPromptEl = null;
@@ -130,12 +144,17 @@ function teardownModalDom() {
   descEl = null;
   statsEl = null;
   detailBlock = null;
+  bodyMainEl = null;
   feedbackBlock = null;
+  feedbackTopEl = null;
   feedbackSkillsEl = null;
   feedbackPointsEl = null;
+  feedbackPointsCurrentEl = null;
+  feedbackPointsMaxEl = null;
   feedbackDescEl = null;
   feedbackTitleEl = null;
   feedbackTextEl = null;
+  feedbackBottomEl = null;
   headerPointsEl = null;
   playBlock = null;
   playPromptEl = null;
@@ -150,6 +169,8 @@ function modalDomNeedsRebuild() {
   return (
     !existing.querySelector('.module-modal__hero-head') ||
     !existing.querySelector('.module-modal__feedback') ||
+    !existing.querySelector('.module-modal__feedback-top') ||
+    !existing.querySelector('.module-modal__feedback-bottom') ||
     !existing.querySelector('.module-modal__header') ||
     !existing.querySelector('.module-modal__body-main')
   );
@@ -230,8 +251,8 @@ function ensureDom() {
   const body = document.createElement('div');
   body.className = 'module-modal__body';
 
-  const bodyMain = document.createElement('div');
-  bodyMain.className = 'module-modal__body-main';
+  bodyMainEl = document.createElement('div');
+  bodyMainEl.className = 'module-modal__body-main';
 
   detailBlock = document.createElement('div');
   detailBlock.className = 'module-modal__detail';
@@ -269,17 +290,17 @@ function ensureDom() {
   feedbackBlock.className = 'module-modal__feedback';
   feedbackBlock.hidden = true;
 
+  feedbackTopEl = document.createElement('div');
+  feedbackTopEl.className = 'module-modal__feedback-top';
+
   feedbackSkillsEl = document.createElement('div');
   feedbackSkillsEl.className = 'module-modal__feedback-skills';
   feedbackSkillsEl.setAttribute('role', 'list');
   feedbackSkillsEl.setAttribute('aria-label', 'Skills tested');
 
-  feedbackPointsEl = document.createElement('p');
-  feedbackPointsEl.className = 'module-modal__feedback-points';
-
   const feedbackAsideEl = document.createElement('div');
   feedbackAsideEl.className = 'module-modal__feedback-aside';
-  feedbackAsideEl.append(feedbackSkillsEl, feedbackPointsEl);
+  feedbackAsideEl.append(feedbackSkillsEl);
 
   feedbackDescEl = document.createElement('p');
   feedbackDescEl.className = 'module-modal__feedback-desc';
@@ -287,15 +308,31 @@ function ensureDom() {
   feedbackTitleEl = document.createElement('h3');
   feedbackTitleEl.className = 'module-modal__feedback-heading';
   feedbackTitleEl.textContent = 'Feedback';
+  feedbackTitleEl.hidden = true;
 
   feedbackTextEl = document.createElement('p');
   feedbackTextEl.className = 'module-modal__feedback-text';
 
   const feedbackMainEl = document.createElement('div');
   feedbackMainEl.className = 'module-modal__feedback-main';
-  feedbackMainEl.append(feedbackDescEl, feedbackTitleEl, feedbackTextEl);
+  feedbackMainEl.append(feedbackDescEl, feedbackTextEl);
 
-  feedbackBlock.append(feedbackAsideEl, feedbackMainEl);
+  feedbackTopEl.append(feedbackAsideEl, feedbackMainEl);
+
+  feedbackPointsEl = document.createElement('p');
+  feedbackPointsEl.className = 'module-modal__feedback-points';
+  feedbackPointsCurrentEl = document.createElement('span');
+  feedbackPointsCurrentEl.className = 'module-modal__feedback-points-current';
+  feedbackPointsMaxEl = document.createElement('span');
+  feedbackPointsMaxEl.className = 'module-modal__feedback-points-max';
+  feedbackPointsEl.append(feedbackPointsCurrentEl, feedbackPointsMaxEl);
+
+  feedbackBottomEl = document.createElement('div');
+  feedbackBottomEl.className = 'module-modal__feedback-bottom';
+  feedbackBottomEl.hidden = true;
+  feedbackBottomEl.append(feedbackPointsEl);
+
+  feedbackBlock.append(feedbackTopEl, feedbackBottomEl);
 
   playBlock = document.createElement('div');
   playBlock.className = 'module-modal__play';
@@ -330,8 +367,8 @@ function ensureDom() {
   ctaBtn.append(ctaLabelEl, ctaIconEl);
 
   actionsEl.append(backBtn, ctaBtn);
-  bodyMain.append(detailBlock, feedbackBlock, playBlock, actionsEl);
-  body.append(bodyMain, hero);
+  bodyMainEl.append(detailBlock, feedbackBlock, playBlock, actionsEl);
+  body.append(bodyMainEl, hero);
   panelEl.append(closeBtn, header, body);
   syncModalDomLayout();
   rootEl.append(backdropEl, panelEl);
@@ -347,6 +384,25 @@ function ensureDom() {
   });
 }
 
+function syncCorpCtaPresentation(view) {
+  const ctaLabel = ctaBtn?.querySelector('.module-modal__cta-label');
+  const ctaIcon = ctaBtn?.querySelector('.module-modal__cta-icon');
+  if (!ctaLabel || !ctaIcon) return;
+
+  if (view === 'feedback') {
+    ctaLabel.textContent = 'Play again';
+    ctaIcon.innerHTML = MODAL_REPEAT_ICON_SVG;
+    ctaIcon.classList.remove('is-hidden');
+    return;
+  }
+
+  if (view === 'detail') {
+    ctaLabel.textContent = 'Play';
+    ctaIcon.innerHTML = MODAL_PLAY_ICON_SVG;
+    ctaIcon.classList.remove('is-hidden');
+  }
+}
+
 function setView(view) {
   modalState.view = view;
   panelEl.dataset.view = view;
@@ -354,26 +410,31 @@ function setView(view) {
   const corp = usesCorpDetailLayout();
   detailBlock.hidden = view !== 'detail';
   if (feedbackBlock) feedbackBlock.hidden = view !== 'feedback';
+  if (feedbackBottomEl) feedbackBottomEl.hidden = view !== 'feedback';
   playBlock.hidden = view !== 'choices';
+  syncFeedbackActionsPlacement(view);
 
   if (corp) {
     ctaBtn.hidden = view === 'choices';
-    backBtn.hidden = view === 'detail';
-    const ctaLabel = ctaBtn.querySelector('.module-modal__cta-label');
-    const ctaIcon = ctaBtn.querySelector('.module-modal__cta-icon');
-    if (view === 'feedback') {
-      if (ctaLabel) ctaLabel.textContent = 'Try again';
-      ctaIcon?.classList.add('is-hidden');
-    } else if (view === 'detail') {
-      if (ctaLabel) ctaLabel.textContent = 'Play';
-      ctaIcon?.classList.remove('is-hidden');
-    }
+    backBtn.hidden = view === 'detail' || view === 'feedback';
+    syncCorpCtaPresentation(view);
+    applyCorporatePanelFrameForCurrentView();
     return;
   }
 
   ctaBtn.hidden = view !== 'detail';
   backBtn.hidden = false;
   ctaBtn.querySelector('.module-modal__cta-icon')?.classList.remove('is-hidden');
+}
+
+function syncFeedbackActionsPlacement(view = modalState.view) {
+  if (!actionsEl || !feedbackBottomEl || !bodyMainEl) return;
+  const corpFeedback = usesCorpDetailLayout() && view === 'feedback';
+  if (corpFeedback) {
+    if (actionsEl.parentElement !== feedbackBottomEl) feedbackBottomEl.append(actionsEl);
+    return;
+  }
+  if (actionsEl.parentElement !== bodyMainEl) bodyMainEl.append(actionsEl);
 }
 
 function usesCorpDetailLayout() {
@@ -391,12 +452,24 @@ function syncModalDomLayout() {
 
   if (!heroHeadEl || !skillsNavEl) return;
 
+  const heroEl = panelEl.querySelector('.module-modal__hero');
+  const bodyEl = panelEl.querySelector('.module-modal__body');
+
   if (corpDetail) {
     heroHeadEl.querySelector('.module-modal__hero-main')?.prepend(titleEl);
     if (skillsNavEl.parentElement !== detailBlock) {
       detailBlock.insertBefore(skillsNavEl, descEl);
     }
+    if (heroEl && bodyEl && heroEl.parentElement === bodyEl) {
+      panelEl.insertBefore(heroEl, panelEl.firstChild);
+    }
+    heroEl?.classList.add('module-modal__hero--corp-bg');
     return;
+  }
+
+  heroEl?.classList.remove('module-modal__hero--corp-bg');
+  if (heroEl && bodyEl && heroEl.parentElement === panelEl) {
+    bodyEl.appendChild(heroEl);
   }
 
   if (titleEl.parentElement !== detailBlock) {
@@ -429,17 +502,36 @@ function certifyLabelForModule(mod) {
 function playtimeLabelForMeta(meta, mod) {
   if (meta.playtime && meta.playtime !== '—') {
     const raw = String(meta.playtime).trim();
-    return raw.startsWith('~') ? raw : `~${raw}`;
+    const withTilde = raw.startsWith('~') ? raw : `~${raw}`;
+    return /\bplaytime\b/i.test(withTilde) ? withTilde : `${withTilde} playtime`;
   }
-  if (mod.start) return '~1 min';
-  return '~1 min playtime';
+  if (mod.start) return '~1min playtime';
+  return '~1min playtime';
+}
+
+function corporateSkillsForModule(mod) {
+  if (Array.isArray(mod.modal?.skills)) {
+    return mod.modal.skills.filter((item) => item?.label);
+  }
+
+  const meta = modalMeta(mod);
+  if (mod.start && !meta.showStats) return [];
+
+  const focus = MODULE_SKILL_FOCUS[mod.id];
+  const idx = focus != null ? CORPORATE_SKILL_FOCUS_INDEX[focus] : null;
+  if (idx == null) return [];
+
+  return [{ label: CORPORATE_MODAL_SKILL_NAV[idx].label }];
 }
 
 function populateSkillsNav(mod) {
   if (!skillsNavEl) return;
-  const items = mod.modal?.skills ?? CORPORATE_MODAL_SKILL_NAV;
+  const items = corporateSkillsForModule(mod);
 
   skillsNavEl.innerHTML = '';
+  skillsNavEl.hidden = items.length === 0;
+  detailBlock?.classList.toggle('module-modal__detail--solo', items.length === 0);
+
   for (const item of items) {
     const row = document.createElement('p');
     row.className = 'module-modal__skill';
@@ -464,17 +556,29 @@ function modulePointsForDisplay(mod) {
   return estimated != null ? leaderboardPointsFromEmpathy(estimated) : 0;
 }
 
+function moduleMaxPointsForDisplay() {
+  return leaderboardPointsFromEmpathy(EMPATHY_SCORE_CEIL);
+}
+
 function focusSkillRowIndex(mod) {
+  const items = corporateSkillsForModule(mod);
+  if (items.length <= 1) return 0;
+
   const focus = MODULE_SKILL_FOCUS[mod.id];
-  if (focus && CORPORATE_SKILL_FOCUS_INDEX[focus] != null) {
-    return CORPORATE_SKILL_FOCUS_INDEX[focus];
-  }
-  return 2;
+  const focusIdx = focus != null ? CORPORATE_SKILL_FOCUS_INDEX[focus] : null;
+  const focusLabel =
+    focusIdx != null ? CORPORATE_MODAL_SKILL_NAV[focusIdx]?.label : null;
+  if (!focusLabel) return 0;
+
+  const rowIdx = items.findIndex((item) => item.label === focusLabel);
+  return rowIdx >= 0 ? rowIdx : 0;
 }
 
 /** Per-skill bar fill (0–100) derived from module empathy score. */
 function skillBarRowsForModule(mod) {
-  const items = mod.modal?.skills ?? CORPORATE_MODAL_SKILL_NAV;
+  const items = corporateSkillsForModule(mod);
+  if (!items.length) return [];
+
   const score =
     getModuleEmpathyScore(mod.id) ?? computeEmpathyScore(mod, null) ?? EMPATHY_SCORE_FOUR_STARS;
   const span = EMPATHY_SCORE_CEIL - EMPATHY_SCORE_FLOOR;
@@ -486,9 +590,9 @@ function skillBarRowsForModule(mod) {
   const deltas = [-14, 6, -4, 10];
 
   return items.map((item, i) => {
-    let percent = base + (deltas[i] ?? 0);
-    if (i === focusIdx) percent = Math.min(96, percent + 20);
-    else percent = Math.max(20, percent - 6);
+    let percent = items.length === 1 ? base : base + (deltas[i] ?? 0);
+    if (i === focusIdx) percent = Math.min(96, percent + (items.length === 1 ? 8 : 20));
+    else if (items.length > 1) percent = Math.max(20, percent - 6);
     return {
       label: item.label,
       percent: Math.max(18, Math.min(96, percent))
@@ -513,7 +617,6 @@ function feedbackCopyForModule(mod) {
 function renderFeedbackSkillBars(mod) {
   if (!feedbackSkillsEl) return;
   feedbackSkillsEl.innerHTML = '';
-
   for (const row of skillBarRowsForModule(mod)) {
     const item = document.createElement('div');
     item.className = 'module-modal__feedback-skill';
@@ -543,11 +646,20 @@ function renderFeedbackSkillBars(mod) {
 
 function populateFeedbackView(mod) {
   renderFeedbackSkillBars(mod);
-  if (feedbackPointsEl) {
-    feedbackPointsEl.textContent = modulePointsForDisplay(mod).toLocaleString('en-US');
+  const current = modulePointsForDisplay(mod);
+  const max = moduleMaxPointsForDisplay();
+  if (feedbackPointsCurrentEl) {
+    feedbackPointsCurrentEl.textContent = current.toLocaleString('en-US');
+  }
+  if (feedbackPointsMaxEl) {
+    feedbackPointsMaxEl.textContent = ` / ${max.toLocaleString('en-US')}`;
   }
   if (feedbackDescEl) feedbackDescEl.textContent = mod.description ?? '';
-  if (feedbackTextEl) feedbackTextEl.textContent = feedbackCopyForModule(mod);
+  if (feedbackTextEl) {
+    const coaching = feedbackCopyForModule(mod);
+    feedbackTextEl.textContent = coaching;
+    feedbackTextEl.hidden = !coaching || coaching === (mod.description ?? '');
+  }
 }
 
 function populateCorporateHeader(mod, meta, { feedback = false } = {}) {
@@ -556,15 +668,10 @@ function populateCorporateHeader(mod, meta, { feedback = false } = {}) {
   renderModalHeaderStars(earned);
   if (headerCertifyEl) headerCertifyEl.textContent = certifyLabelForModule(mod);
   if (headerPlaytimeEl) {
-    headerPlaytimeEl.hidden = feedback;
-    if (!feedback) headerPlaytimeEl.textContent = playtimeLabelForMeta(meta, mod);
+    headerPlaytimeEl.hidden = false;
+    headerPlaytimeEl.textContent = playtimeLabelForMeta(meta, mod);
   }
-  if (headerPointsEl) {
-    headerPointsEl.hidden = !feedback;
-    if (feedback) {
-      headerPointsEl.textContent = modulePointsForDisplay(mod).toLocaleString('en-US');
-    }
-  }
+  if (headerPointsEl) headerPointsEl.hidden = true;
   if (!feedback) populateSkillsNav(mod);
 }
 
@@ -573,7 +680,10 @@ function isCorporateSkin() {
 }
 
 function getCorporatePathHost() {
-  return document.getElementById('modules');
+  return (
+    document.querySelector('.intro-corporate-board__main') ??
+    document.getElementById('modules')
+  );
 }
 
 function rectWithinHost(host, el) {
@@ -587,8 +697,8 @@ function rectWithinHost(host, el) {
   };
 }
 
-/** Expanded chapter panel — ~60% of #modules, centered (path + cards stay visible around it). */
-function corporatePanelTargetRect() {
+/** Expanded chapter panel — ~60% of main column (detail) or wider for played feedback. */
+function corporatePanelTargetRect({ feedback = false } = {}) {
   const host = getCorporatePathHost();
   if (!host) return null;
 
@@ -596,12 +706,23 @@ function corporatePanelTargetRect() {
   const h = host.clientHeight;
   if (w < 1 || h < 1) return null;
 
-  const width = Math.max(CORPORATE_MODULES_PANEL_MIN_W, Math.round(w * CORPORATE_MODULES_PANEL_RATIO));
-  const height = Math.max(CORPORATE_MODULES_PANEL_MIN_H, Math.round(h * CORPORATE_MODULES_PANEL_RATIO));
+  const ratio = feedback ? CORPORATE_MODULES_PANEL_FEEDBACK_RATIO : CORPORATE_MODULES_PANEL_RATIO;
+  const width = Math.max(CORPORATE_MODULES_PANEL_MIN_W, Math.round(w * ratio));
+  let height = Math.max(CORPORATE_MODULES_PANEL_MIN_H, Math.round(h * CORPORATE_MODULES_PANEL_HEIGHT_RATIO));
+  const aspectFloor = Math.round(width * CORPORATE_MODULES_PANEL_MIN_ASPECT);
+  const aspectCeil = Math.round(h * 0.92);
+  height = Math.min(aspectCeil, Math.max(height, aspectFloor));
   const left = Math.round((w - width) * 0.5);
   const top = Math.round((h - height) * 0.5);
 
   return { left, top, width, height };
+}
+
+function applyCorporatePanelFrameForCurrentView() {
+  if (!modalState.open || !modalState.corporatePathLayout || !panelEl) return;
+  const target = corporatePanelTargetRect({ feedback: panelEl.dataset.view === 'feedback' });
+  if (!target) return;
+  applyCorporatePanelFrame(target);
 }
 
 function applyCorporatePanelFrame(target) {
@@ -645,9 +766,7 @@ function bindCorporateResize() {
   if (corporateResizeListener) return;
   corporateResizeListener = () => {
     if (!modalState.open || !modalState.corporatePathLayout) return;
-    const target = corporatePanelTargetRect();
-    if (!target) return;
-    applyCorporatePanelFrame(target);
+    applyCorporatePanelFrameForCurrentView();
   };
   window.addEventListener('resize', corporateResizeListener);
 }
@@ -664,7 +783,7 @@ function corporateOriginWrap(sourceCard) {
 
 function runCorporatePathOpen(sourceCard) {
   const host = getCorporatePathHost();
-  const target = corporatePanelTargetRect();
+  const target = corporatePanelTargetRect({ feedback: panelEl?.dataset.view === 'feedback' });
   if (!host || !target) {
     unmountCorporatePathModal();
     sourceCard.classList.add('is-modal-source');
@@ -714,7 +833,7 @@ function runCorporatePathClose(onDone) {
     return;
   }
 
-  const target = corporatePanelTargetRect();
+  const target = corporatePanelTargetRect({ feedback: panelEl?.dataset.view === 'feedback' });
   if (!target) {
     onDone();
     return;

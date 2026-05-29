@@ -20,9 +20,9 @@ html[data-skin='corporate'] {
   --corporate-pop-dur: 0.48s;
   --corporate-accent: #c85a42;
   --corporate-accent-soft: rgba(200, 90, 66, 0.24);
-  /* Untaken pathway — opaque, dull tint of accent (reads like soft glass, not alpha white) */
-  --path-spine-muted-stroke: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 10%, #ffffff);
-  --path-spine-muted-stroke-hover: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 22%, #ffffff);
+  /* Untaken pathway — dull accent-tinted gray (not bright white) */
+  --path-spine-muted-stroke: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 12%, #3f4d47);
+  --path-spine-muted-stroke-hover: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 22%, #55635c);
   --corporate-column-head-offset: clamp(2rem, 6vh, 3.5rem);
   --activity-icon-play: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 38%, #ffffff);
   --activity-icon-score: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff);
@@ -2023,7 +2023,7 @@ html[data-skin='space'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .i
   stroke-width: 4.5;
   stroke: var(--path-spine-muted-stroke);
   filter: none;
-  opacity: 1;
+  opacity: 0.78;
 }
 
 html[data-skin='corporate'] .intro-cord--subway.is-locked-spine:not(.is-filled) .intro-cord-rope--body,
@@ -2779,18 +2779,20 @@ html[data-skin='corporate']
     transform: translate3d(0, -1px, 0) scale(1.01);
   }
 
-  html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
-  html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked),
+  html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked),
+  html[data-skin='space'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked),
   html[data-skin='corporate']
+    .intro-corporate-board.is-pop-complete
     .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
     .intro-module-wrap--next-play.is-path-hover-focus
     .module-card:not(.locked),
   html[data-skin='space']
+    .intro-corporate-board.is-pop-complete
     .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
     .intro-module-wrap--next-play.is-path-hover-focus
     .module-card:not(.locked),
-  html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
-  html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop {
+  html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
+  html[data-skin='space'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop {
     animation: none;
     transform: translate3d(0, -1px, 0) scale(1);
     box-shadow:

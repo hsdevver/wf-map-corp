@@ -366,12 +366,19 @@ function orthogonalPathWithRoundedCorners(points, radius = 26) {
   return d;
 }
 
-function resolveSubwayCornerRadius(fromX, fromY, toX, toY, options = {}, laneGap = 28) {
-  const dx = Math.abs(toX - fromX);
+/** Default elbow radius for column-gutter turns (fixed — does not scale with gutter cheat). */
+const SUBWAY_CORNER_RADIUS = 26;
+const SUBWAY_CORNER_RADIUS_MIN = 20;
+const SUBWAY_CORNER_RADIUS_MAX = 40;
+
+function resolveSubwayCornerRadius(fromX, fromY, toX, toY, options = {}) {
   const dy = Math.abs(toY - fromY);
   return (
     options.radius ??
-    Math.min(40, Math.max(20, Math.abs(dy) * 0.22, Math.abs(dx) * 0.1, laneGap * 0.55))
+    Math.min(
+      SUBWAY_CORNER_RADIUS_MAX,
+      Math.max(SUBWAY_CORNER_RADIUS_MIN, SUBWAY_CORNER_RADIUS, dy * 0.22)
+    )
   );
 }
 

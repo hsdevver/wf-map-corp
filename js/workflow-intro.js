@@ -1,4 +1,4 @@
-import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js?v=corp-16';
+import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js?v=corp-19';
 import { resetCorporateDashboardLayout } from './layout-cheat.js';
 import {
   getRecentActivityModuleIds,
@@ -35,8 +35,8 @@ import {
   formatChapterLabel,
   getChapterAriaLabel,
   MODULE_SKILL_FOCUS
-} from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
-import { initFlowWiringCheat } from './flow-wiring-cheat.js?v=flow-wiring-3b-4a-v2';
+} from './consequence-flow.js?v=flow-wiring-m8-skills-v1';
+import { initFlowWiringCheat } from './flow-wiring-cheat.js?v=flow-wiring-m8-skills-v1';
 import { pathGridEffectiveRowCount, PATH_GRID_SPINE_ROW } from './path-grid-layout.js?v=flex-only-v2';
 import { ensurePathMapEdgeMask, syncPathMapEdgeMask } from './path-map-edge-mask.js';
 import { isPathLaneFitRows } from './path-lane-framing.js';
@@ -65,7 +65,7 @@ import {
   setCatalogChapter,
   setCorporateVolumeCheatMode
 } from './consequence-progress.js?v=flex-only-v2';
-import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js?v=corp-modal-feedback-v1';
+import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js?v=corp-modal-center-main-v1';
 import {
   applyIntroInitialHiddenState,
   cancelIntroDirector,
