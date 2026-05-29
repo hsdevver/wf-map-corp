@@ -1173,12 +1173,21 @@ html.is-plug-active .intro-module-wrap.is-revealed {
 
 html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
 html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked) {
+  transform-origin: center center;
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff),
     0 0 22px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 62%, transparent),
     0 0 44px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 34%, transparent),
     0 10px 26px rgba(0, 0, 0, 0.26);
   animation: intro-module-next-play-glow 2.5s ease-in-out infinite;
+}
+
+/* Scale pulse starts after the corporate intro pop sequence finishes */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked),
+html[data-skin='space'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked) {
+  animation:
+    intro-module-next-play-glow 2.5s ease-in-out infinite,
+    intro-module-next-play-scale-pulse 2.4s ease-in-out infinite;
 }
 
 @keyframes intro-module-play-hint-pulse {
@@ -1223,6 +1232,17 @@ html[data-skin='space'] .intro-module-wrap--play-hint.intro-module-wrap--next-pl
       0 0 28px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 78%, transparent),
       0 0 52px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 42%, transparent),
       0 10px 26px rgba(0, 0, 0, 0.26);
+  }
+}
+
+/* Next chapter — 1200ms up to 1.05, 1200ms back to 1 */
+@keyframes intro-module-next-play-scale-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
   }
 }
 

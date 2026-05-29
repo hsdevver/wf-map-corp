@@ -1,5 +1,5 @@
 import { initCheatPanel, wireSecretChapterTrigger } from './cheat-panel.js?v=corp-16';
-import { getPathHighlightMode, resetCorporateDashboardLayout } from './layout-cheat.js';
+import { resetCorporateDashboardLayout } from './layout-cheat.js';
 import {
   getRecentActivityModuleIds,
   initIntroActivityLog,
@@ -10,8 +10,7 @@ import { initAmbientMusicSync, initAmbientPlayback } from './ambient-music.js?v=
 import {
   anchorFromRect,
   applySubwayLaneBundles,
-  applyFlexStackCordAlignment,
-  applyCorporateSubwayLaneLayout,
+  applyFlexPathSubwayLaneLayout,
   applySubwayMidXLanes,
   applySubwayClearOfCards,
   SUBWAY_MID_LANE_PITCH,
@@ -35,17 +34,13 @@ import {
   FLOW_GRAPH_BUILD,
   formatChapterLabel,
   getChapterAriaLabel,
-  getPathRouteVariants,
   MODULE_SKILL_FOCUS
 } from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
 import { initFlowWiringCheat } from './flow-wiring-cheat.js?v=flow-wiring-3b-4a-v2';
-import {
-  isPathGridFlexLayout,
-  pathGridEffectiveRowCount,
-  PATH_GRID_SPINE_ROW
-} from './path-grid-layout.js';
-import { ensurePathMapEdgeBlur, syncPathMapEdgeBlur } from './path-map-edge-blur.js';
+import { pathGridEffectiveRowCount, PATH_GRID_SPINE_ROW } from './path-grid-layout.js?v=flex-only-v2';
+import { ensurePathMapEdgeMask, syncPathMapEdgeMask } from './path-map-edge-mask.js';
 import { isPathLaneFitRows } from './path-lane-framing.js';
+import { resolvePathColumnGapPx } from './path-column-gutter.js';
 import {
   applyPlayOutcome,
   beginChapter2,
@@ -69,8 +64,8 @@ import {
   playModeBeforeOutcome,
   setCatalogChapter,
   setCorporateVolumeCheatMode
-} from './consequence-progress.js';
-import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js';
+} from './consequence-progress.js?v=flex-only-v2';
+import { initModuleModal, isModuleModalOpen, openModuleModal } from './module-modal.js?v=corp-modal-feedback-v1';
 import {
   applyIntroInitialHiddenState,
   cancelIntroDirector,
@@ -247,6 +242,7 @@ function applyFlexCenteredBranchStacks(byColumn) {
 
     const stack = document.createElement('div');
     stack.className = 'intro-path-stack intro-path-stack--branch';
+    if (colMods.length === 2) stack.classList.add('intro-path-stack--pair');
     stack.dataset.pathColumn = String(col);
     stack.style.gridColumn = String(col);
     stack.style.gridRow = '1';
@@ -279,7 +275,6 @@ function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
   dissolveCorporatePathStacks();
 
   const modules = getRuntimeModules();
-  const flexCentered = isPathGridFlexLayout();
   const byColumn = new Map();
   modules.forEach((mod) => {
     if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
@@ -293,37 +288,21 @@ function applyCorporateModuleGridLayout({ skipCatalogSync = false } = {}) {
     gridEl.style.gridTemplateColumns = `repeat(${maxCol}, minmax(0, 1fr))`;
   }
 
-  gridEl.classList.toggle('is-path-grid-flex', flexCentered);
-  pathMapEl?.classList.toggle('is-path-grid-flex', flexCentered);
+  gridEl.classList.add('is-path-grid-flex');
+  pathMapEl?.classList.add('is-path-grid-flex');
 
-  if (flexCentered) {
-    modules.forEach((mod) => {
-      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
-      if (!wrap) return;
-      wrap.classList.remove(
-        'intro-module-wrap--stacked',
-        'intro-module-wrap--stack-top',
-        'intro-module-wrap--stack-bottom'
-      );
-      wrap.style.gridColumn = String(mod.column);
-      wrap.style.gridRow = '';
-    });
-    applyFlexCenteredBranchStacks(byColumn);
-  } else {
-    modules.forEach((mod) => {
-      const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
-      if (!wrap) return;
-      wrap.classList.remove(
-        'intro-module-wrap--stacked',
-        'intro-module-wrap--stack-top',
-        'intro-module-wrap--stack-bottom'
-      );
-      wrap.classList.add('intro-module-wrap--solo');
-      wrap.style.gridColumn = String(mod.column);
-      wrap.style.gridRow = String(mod.row);
-      wrap.dataset.pathRow = String(mod.row);
-    });
-  }
+  modules.forEach((mod) => {
+    const wrap = gridEl.querySelector(`[data-module-anchor="${mod.id}"]`);
+    if (!wrap) return;
+    wrap.classList.remove(
+      'intro-module-wrap--stacked',
+      'intro-module-wrap--stack-top',
+      'intro-module-wrap--stack-bottom'
+    );
+    wrap.style.gridColumn = String(mod.column);
+    wrap.style.gridRow = '';
+  });
+  applyFlexCenteredBranchStacks(byColumn);
 
   const rowSpread =
     modules.length > 0
@@ -361,8 +340,9 @@ const PATH_FOCUS_COLUMN_COUNT = 5;
 const PATH_OVERVIEW_COLUMN_PEEK = 0;
 const PATH_LATE_FOCUS_START_COL = 3;
 const PATH_COLUMN_AFTER_CH3 = 4;
-const PATH_COLUMN_OVERVIEW_MS = 2250;
-const PATH_COLUMN_REVEAL_MS = 2800;
+/** Wide-volume path intro (refresh / volume change) — 1.5× faster than prior pacing */
+const PATH_COLUMN_OVERVIEW_MS = 1500;
+const PATH_COLUMN_REVEAL_MS = 1867;
 const PATH_FOCUS_PAN_MS = 2800;
 const PATH_COLUMN_REVEAL_EASE = [0.14, 0.92, 0.18, 1];
 /** Slower ease-out for horizontal focus-window pans (1–5 → 3–7). */
@@ -433,9 +413,15 @@ function ensurePathMapStage() {
     pathMapEl.insertBefore(connectors, stage);
   }
 
-  const zoomControls = pathMapEl.querySelector('.intro-path-zoom-controls');
+  const zoomControls =
+    pathMapEl.querySelector('.intro-path-zoom-controls') ??
+    pathMapEl.parentElement?.querySelector('.intro-path-zoom-controls');
   if (zoomControls?.parentElement === stage) {
-    pathMapEl.appendChild(zoomControls);
+    const zoomHost =
+      pathMapEl.closest('.intro-modules') ??
+      pathMapEl.closest('#modules') ??
+      pathMapEl;
+    zoomHost.appendChild(zoomControls);
   }
 
   if (gridEl && gridEl.parentElement !== stage) {
@@ -488,7 +474,10 @@ function measurePathLayoutBox() {
     availW: measurePathVisibleWidth(modulesEl, gridPadX),
     maxRow: pathGridEffectiveRowCount(modules),
     maxCol: Math.max(1, ...modules.map((m) => m.column)),
-    colGap: parseFloat(gridStyle.columnGap) || 0,
+    colGap:
+      isCorporateSkin() || isSpaceSkin()
+        ? resolvePathColumnGapPx(gridEl)
+        : parseFloat(gridStyle.columnGap) || 0,
     rowGap: parseFloat(gridStyle.rowGap) || 0,
     gridPadL,
     isLinear: gridEl.classList.contains('is-path-linear')
@@ -645,7 +634,7 @@ function applyPathGridCardSize(box, cardSize) {
   }
 
   applyPathGridColumnTracks(box, cardSize);
-  if (isCorporateSkin()) syncPathMapEdgeBlur(pathMapEl);
+  if (isCorporateSkin()) syncPathMapEdgeMask(pathMapEl);
 }
 
 /**
@@ -742,6 +731,7 @@ function setPathMapStageTransform(translateX, translateY = pathStagePanY) {
   const stage = ensurePathMapStage();
   if (!stage) return;
   stage.style.transform = `translate3d(${translateX}px, ${translateY}px, 0)`;
+  if (isCorporateSkin()) syncPathMapEdgeMask(pathMapEl);
 }
 
 function pathZoomCardSize(bounds, zoomT) {
@@ -1029,7 +1019,11 @@ function ensurePathZoomControls() {
   btnIn.textContent = '+';
 
   controls.append(btnOut, btnIn);
-  pathMapEl.appendChild(controls);
+  const zoomHost =
+    pathMapEl.closest('.intro-modules') ??
+    pathMapEl.closest('#modules') ??
+    pathMapEl;
+  zoomHost.appendChild(controls);
 
   btnOut.addEventListener('click', () => nudgePathZoom(-PATH_ZOOM_STEP));
   btnIn.addEventListener('click', () => nudgePathZoom(PATH_ZOOM_STEP));
@@ -1088,6 +1082,7 @@ function resetPathColumnReveal() {
   pathMapEl?.classList.remove('is-path-focus-early', 'is-path-focus-late', 'is-path-focus-panning');
   document.getElementById('modules')?.classList.remove('is-path-wide-volume');
   updatePathZoomControls();
+  updatePathColumnRevealClasses();
 }
 
 /** Wide volumes — map fits all columns; lane shows five; zoom in focuses five. */
@@ -1169,6 +1164,9 @@ function updatePathColumnRevealClasses() {
     panEnabled = pathStageHasPanSlack(box, cardSize);
   }
   pathMapEl?.classList.toggle('is-path-pan-enabled', panEnabled);
+  if (pathMapEl && isCorporateSkin()) {
+    syncPathMapEdgeMask(pathMapEl);
+  }
   if (needs && pathMapEl) {
     pathMapEl.dataset.pathZoomPhase = pathColumnRevealPhase;
     document.documentElement.style.setProperty('--path-map-scale', '1');
@@ -1534,6 +1532,7 @@ function syncCorporatePathViewport() {
 
   ensurePathZoomControls();
   ensurePathMapStage();
+  ensurePathMapEdgeMask(pathMapEl);
   const box = measurePathLayoutBox();
   if (!box) {
     applyCorporatePathFallbackSizing();
@@ -4298,6 +4297,7 @@ function completeCorporateIntro() {
   wireSecretChapterTrigger();
   syncCorporatePathViewport();
   queueIntroCordLayout();
+  syncNextPlayModuleGlow();
   requestAnimationFrame(() => requestAnimationFrame(syncIntroSideColumnLayout));
 }
 
@@ -4440,6 +4440,14 @@ function moduleById(id) {
   return getRuntimeModules().find((m) => m.id === id);
 }
 
+/** Unfilled spine between two still-locked chapters (muted pathway styling). */
+function isLockedChapterSpineEdge(key) {
+  const [fromId, toId] = key.split('|');
+  const from = moduleById(fromId);
+  const to = moduleById(toId);
+  return Boolean(from?.locked && to?.locked);
+}
+
 function isCordEdgeVisible(fromId, toId) {
   if (isCorporateSkin()) return true;
 
@@ -4514,10 +4522,10 @@ function pathCardSizePx() {
 
 function applySubwayLaneLayout() {
   if (isCorporateSkin()) {
-    applyCorporateSubwayLaneLayout(cordRopeSegments, isEdgeFilled);
+    applyFlexPathSubwayLaneLayout(cordRopeSegments, isEdgeFilled, SUBWAY_MID_LANE_PITCH, pathMapEl);
   } else {
     const midPitch = getCurrentChapter() === 3 ? 32 : SUBWAY_MID_LANE_PITCH;
-    applySubwayMidXLanes(cordRopeSegments, midPitch);
+    applySubwayMidXLanes(cordRopeSegments, midPitch, pathMapEl);
   }
 }
 
@@ -4526,7 +4534,6 @@ function refreshSubwayCordGeometry() {
   for (const seg of cordRopeSegments) refreshCordSegmentEndpoints(seg);
   const cardSizePx = pathCardSizePx();
   applySubwayLaneBundles(cordRopeSegments, { cardSizePx });
-  applyFlexStackCordAlignment(cordRopeSegments, pathMapEl, { cardSizePx });
   applySubwayLaneLayout();
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
   reorderSubwayCordGroups();
@@ -4765,8 +4772,6 @@ let cordFloatPhase = 0;
 let cordTooltipEl = null;
 let cordTooltipHideTimer = 0;
 let modulePathHoverId = null;
-let modulePathHoverIncomingKey = null;
-let modulePathHoverRouteId = null;
 let modulePathHoverClearTimer = 0;
 let cordEdgeHoverKey = null;
 let replayOutcomeEdgeKey = null;
@@ -4812,29 +4817,6 @@ function hideCordTooltip() {
   }, 200);
 }
 
-/** Incoming cords to a module (top → bottom on the target card edge). */
-function getIncomingEdgesTo(moduleId) {
-  const anchors = getChapterCordAnchors();
-  const list = [];
-  for (const [fromId, toId] of getChapterEdges()) {
-    if (toId !== moduleId) continue;
-    if (!isCordEdgeVisible(fromId, toId)) continue;
-    const key = edgeKey(fromId, toId);
-    const anchor = anchors[key] ?? {};
-    list.push({
-      key,
-      fromId,
-      toAlong: anchor.toAlong ?? 0.5
-    });
-  }
-  list.sort((a, b) => a.toAlong - b.toAlong);
-  return list;
-}
-
-function hasOutgoingEdges(moduleId) {
-  return getChapterEdges().some(([fromId]) => fromId === moduleId);
-}
-
 /** Visible tubes leaving `moduleId` (topological out-degree on the path map). */
 function getOutgoingVisibleEdgeKeys(moduleId) {
   const keys = [];
@@ -4865,42 +4847,6 @@ function pickMostRecentEdgeKey(keys) {
     }
   }
   return pick;
-}
-
-/** Final / hub finish nodes — hover highlights only the incoming tube, not the whole graph. */
-function isTerminalPathModule(moduleId) {
-  return !hasOutgoingEdges(moduleId);
-}
-
-function pickIncomingEdgeByPointer(wrap, incoming, clientY) {
-  if (!incoming.length) return null;
-  if (incoming.length === 1) return incoming[0].key;
-  const card = wrap.querySelector('.module-card') ?? wrap;
-  const rect = card.getBoundingClientRect();
-  if (rect.height < 1) return incoming[0].key;
-  const t = Math.max(0, Math.min(0.999, (clientY - rect.top) / rect.height));
-  const idx = Math.min(incoming.length - 1, Math.floor(t * incoming.length));
-  return incoming[idx].key;
-}
-
-/** @param {HTMLElement} wrap @param {{ id: string, along?: number }[]} variants @param {number} clientY */
-function pickRouteVariantByPointer(wrap, variants, clientY) {
-  if (!variants.length) return null;
-  const card = wrap.querySelector('.module-card') ?? wrap;
-  const rect = card.getBoundingClientRect();
-  if (rect.height < 1) return variants[0].id;
-  const t = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-  let best = variants[0];
-  let bestDist = Infinity;
-  for (const variant of variants) {
-    const along = variant.along ?? 0.5;
-    const dist = Math.abs(along - t);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = variant;
-    }
-  }
-  return best.id;
 }
 
 /** Drop unfilled tubes and any edge/module that touches a locked chapter. */
@@ -4936,25 +4882,6 @@ function filterCordHoverEdgeKeys(edgeKeys) {
   return out;
 }
 
-/** Route variants where every tube was played and no locked chapter sits on the path. */
-function getTakenRouteVariants(moduleId) {
-  const variants = getPathRouteVariants(moduleId);
-  if (!variants?.length) return [];
-  return variants.filter((variant) => {
-    const keys = new Set(variant.edges);
-    return variant.edges.every((k) => isEdgeFilled(k)) && filterPlayablePathEdgeKeys(keys).size === keys.size;
-  });
-}
-
-/** Filled upstream path for one incoming branch into `moduleId`. */
-function getFilledEdgesForIncoming(incomingKey) {
-  const [fromId] = incomingKey.split('|');
-  const keys = new Set();
-  if (isEdgeFilled(incomingKey)) keys.add(incomingKey);
-  for (const k of getFilledEdgesLeadingTo(fromId)) keys.add(k);
-  return keys;
-}
-
 /** Most recently filled upstream route into the next chapter (fill order in progress state). */
 function getRecentPathEdgeKeys(targetModuleId = null) {
   const target = targetModuleId ?? introState.nextPlayModuleId ?? resolveNextPlayModuleId();
@@ -4984,33 +4911,6 @@ function getRecentPathEdgeKeys(targetModuleId = null) {
     current = pick.split('|')[0];
   }
 
-  return keys;
-}
-
-/** Filled edge keys on the path the player actually took into `moduleId`. */
-function getFilledEdgesLeadingTo(moduleId) {
-  const keys = new Set();
-  const byTarget = new Map();
-
-  for (const key of getFilledEdgeKeys()) {
-    const [from, to] = key.split('|');
-    if (!from || !to) continue;
-    if (!byTarget.has(to)) byTarget.set(to, []);
-    byTarget.get(to).push({ from, key });
-  }
-
-  const queue = [moduleId];
-  const seen = new Set([moduleId]);
-  while (queue.length) {
-    const to = queue.shift();
-    for (const { from, key } of byTarget.get(to) ?? []) {
-      keys.add(key);
-      if (!seen.has(from)) {
-        seen.add(from);
-        queue.push(from);
-      }
-    }
-  }
   return keys;
 }
 
@@ -5044,23 +4944,6 @@ function pathHoverSourceModuleId(displayKeys, focusModuleId, incomingEdgeKey) {
     const [from, to] = key.split('|');
     if (to === focusModuleId && from) return from;
   }
-  return null;
-}
-
-function resolvePathHoverSourceEdge(
-  moduleId,
-  { multiIngress, multiRoute, routeVariants, selectedRouteId, selectedKey, incoming }
-) {
-  if (multiIngress && selectedKey) return selectedKey;
-  if (multiRoute && selectedRouteId) {
-    const variant = routeVariants.find((v) => v.id === selectedRouteId) ?? routeVariants[0];
-    return (
-      variant.edges.find((key) => key.split('|')[1] === moduleId) ??
-      variant.edges[variant.edges.length - 1] ??
-      null
-    );
-  }
-  if (incoming.length === 1) return incoming[0].key;
   return null;
 }
 
@@ -5252,11 +5135,9 @@ function syncPersistentPathHighlights() {
 
   if (!pathMapEl || !isCorporateSkin()) {
     pathMapEl?.classList.remove('is-path-highlight-persistent');
-    pathMapEl?.removeAttribute('data-path-highlight-mode');
     return;
   }
 
-  pathMapEl.dataset.pathHighlightMode = getPathHighlightMode();
   pathMapEl.classList.remove('is-path-highlight-persistent');
 
   if (!modulePathHoverId) {
@@ -5273,8 +5154,6 @@ function clearModulePathHover() {
   clearTimeout(modulePathHoverClearTimer);
   modulePathHoverClearTimer = 0;
   modulePathHoverId = null;
-  modulePathHoverIncomingKey = null;
-  modulePathHoverRouteId = null;
   cordEdgeHoverKey = null;
   pathMapEl?.classList.remove('is-module-path-hover', 'is-cord-edge-hover');
   pathMapEl?.removeAttribute('data-path-hover-module');
@@ -5290,35 +5169,26 @@ function clearModulePathHover() {
   reapplyPersistentPathHighlights();
 }
 
-/** Recent / all-opened — highlight paths into the hovered chapter only (no local ingress scrub). */
-function applyChapterTargetPathHover(moduleId, mode) {
-  let displayKeys =
-    mode === 'recent'
-      ? getRecentPathEdgeKeys(moduleId)
-      : filterPlayablePathEdgeKeys(getFilledEdgesLeadingTo(moduleId));
-
-  displayKeys = filterPlayablePathEdgeKeys(displayKeys);
+/** Recent path — highlight the latest taken route into the hovered chapter. */
+function applyChapterTargetPathHover(moduleId) {
+  const displayKeys = filterPlayablePathEdgeKeys(getRecentPathEdgeKeys(moduleId));
   if (!displayKeys.size) {
     /* No tubes to highlight yet — do not clear card hover pop (scale). */
     if (pathMapEl?.classList.contains('is-module-path-hover')) {
       clearModulePathHover();
     }
     modulePathHoverId = moduleId;
-    modulePathHoverIncomingKey = null;
-    modulePathHoverRouteId = null;
     void panPathViewportTowardModule(moduleId);
     return;
   }
 
   modulePathHoverId = moduleId;
-  modulePathHoverIncomingKey = null;
-  modulePathHoverRouteId = null;
 
   let sourceEdgeKey = null;
   for (const key of displayKeys) {
     if (key.split('|')[1] === moduleId) {
       sourceEdgeKey = key;
-      if (mode === 'recent') break;
+      break;
     }
   }
 
@@ -5355,8 +5225,6 @@ function setCordEdgeHover(edgeKey) {
   clearTimeout(modulePathHoverClearTimer);
   modulePathHoverClearTimer = 0;
   modulePathHoverId = null;
-  modulePathHoverIncomingKey = null;
-  modulePathHoverRouteId = null;
   cordEdgeHoverKey = edgeKey;
 
   const { toId } = parseEdgeKey(edgeKey);
@@ -5378,10 +5246,7 @@ function setCordEdgeHover(edgeKey) {
   if (toId) void panPathViewportTowardModule(toId);
 }
 
-function setModulePathHover(
-  moduleId,
-  { incomingEdgeKey = null, routeVariantId = null, clientY = null } = {}
-) {
+function setModulePathHover(moduleId) {
   if (introIsPlaying) return;
   if (!moduleId || introState.plugActive || introState.pluggingEdge || introState.handoffRunning) {
     clearModulePathHover();
@@ -5399,122 +5264,11 @@ function setModulePathHover(
   clearTimeout(modulePathHoverClearTimer);
   modulePathHoverClearTimer = 0;
 
-  const highlightMode = getPathHighlightMode();
-  if (highlightMode === 'recent' || highlightMode === 'completed') {
-    applyChapterTargetPathHover(moduleId, highlightMode);
+  if (modulePathHoverId === moduleId && pathMapEl?.classList.contains('is-module-path-hover')) {
     return;
   }
 
-  const wrap = pathMapEl?.querySelector(`[data-module-anchor="${moduleId}"]`);
-  const incoming = getIncomingEdgesTo(moduleId);
-  const routeVariants = getTakenRouteVariants(moduleId);
-  const multiRoute = routeVariants.length > 1;
-  const filledIncoming = incoming.filter((inc) => {
-    const branch = filterPlayablePathEdgeKeys(getFilledEdgesForIncoming(inc.key));
-    return branch.size > 0 && branch.has(inc.key);
-  });
-  const multiIngress = filledIncoming.length > 1 && !multiRoute;
-
-  let selectedKey = incomingEdgeKey;
-  if (multiIngress && !selectedKey && wrap && clientY != null) {
-    selectedKey = pickIncomingEdgeByPointer(wrap, filledIncoming, clientY);
-  }
-  if (multiIngress && !selectedKey && wrap) {
-    selectedKey = pickIncomingEdgeByPointer(
-      wrap,
-      filledIncoming,
-      wrap.getBoundingClientRect().top + 1
-    );
-  }
-
-  let selectedRouteId = routeVariantId;
-  if (multiRoute && !selectedRouteId && wrap && clientY != null) {
-    selectedRouteId = pickRouteVariantByPointer(wrap, routeVariants, clientY);
-  }
-  if (multiRoute && !selectedRouteId) {
-    selectedRouteId = routeVariants[0].id;
-  }
-
-  const hoverIncomingKey =
-    multiIngress || filledIncoming.length === 1
-      ? selectedKey ?? filledIncoming[0]?.key ?? null
-      : null;
-  if (
-    modulePathHoverId === moduleId &&
-    modulePathHoverIncomingKey === hoverIncomingKey &&
-    modulePathHoverRouteId === (multiRoute ? selectedRouteId : null)
-  ) {
-    return;
-  }
-
-  modulePathHoverId = moduleId;
-  modulePathHoverIncomingKey = hoverIncomingKey;
-  modulePathHoverRouteId = multiRoute ? selectedRouteId : null;
-
-  let filledKeys = new Set();
-  let displayKeys = new Set();
-
-  if (multiRoute && selectedRouteId) {
-    const variant = routeVariants.find((v) => v.id === selectedRouteId) ?? routeVariants[0];
-    displayKeys = filterPlayablePathEdgeKeys(new Set(variant.edges));
-    filledKeys = new Set(displayKeys);
-  } else if (multiIngress && selectedKey) {
-    displayKeys = filterPlayablePathEdgeKeys(getFilledEdgesForIncoming(selectedKey));
-    filledKeys = new Set(displayKeys);
-  } else if (
-    (isCorporateSkin() || isSpaceSkin()) &&
-    isTerminalPathModule(moduleId) &&
-    !multiRoute &&
-    filledIncoming.length >= 1
-  ) {
-    const localKey = hoverIncomingKey ?? filledIncoming[0]?.key;
-    displayKeys = localKey ? filterPlayablePathEdgeKeys(new Set([localKey])) : new Set();
-    filledKeys = new Set(displayKeys);
-  } else {
-    displayKeys = filterPlayablePathEdgeKeys(getFilledEdgesLeadingTo(moduleId));
-    filledKeys = new Set(displayKeys);
-  }
-
-  if (!displayKeys.size) {
-    clearModulePathHover();
-    return;
-  }
-
-  pathMapEl?.classList.add('is-module-path-hover');
-  pathMapEl?.setAttribute('data-path-hover-module', moduleId);
-  if (selectedKey) pathMapEl?.setAttribute('data-path-hover-edge', selectedKey);
-  else pathMapEl?.removeAttribute('data-path-hover-edge');
-  if (selectedRouteId) pathMapEl?.setAttribute('data-path-hover-route', selectedRouteId);
-  else pathMapEl?.removeAttribute('data-path-hover-route');
-
-  connectorsEl?.querySelectorAll('.intro-cord[data-edge], .intro-cord[data-cord-edge]').forEach((cord) => {
-    const key = cord.dataset.edge || cord.dataset.cordEdge;
-    if (!key) return;
-    const onPath = displayKeys.has(key);
-    const filled = cord.classList.contains('is-filled');
-    const highlight = onPath && filled;
-    setCordPathHighlight(key, highlight, highlight);
-  });
-
-  const sourceEdgeKey = resolvePathHoverSourceEdge(moduleId, {
-    multiIngress,
-    multiRoute,
-    routeVariants,
-    selectedRouteId,
-    selectedKey,
-    incoming: filledIncoming
-  });
-  const tooltipKeys = moduleHoverTooltipEdgeKeys(moduleId, filledKeys);
-  for (const key of tooltipKeys) {
-    if (!displayKeys.has(key)) {
-      displayKeys.add(key);
-      setCordPathHighlight(key, true, true);
-    }
-  }
-
-  syncPathHoverModuleClasses(displayKeys, moduleId, sourceEdgeKey);
-  showPathHoverTooltipsForEdges(tooltipKeys);
-  void panPathViewportTowardModule(moduleId);
+  applyChapterTargetPathHover(moduleId);
 }
 
 /** @param {EventTarget | null} related */
@@ -5530,29 +5284,13 @@ function scheduleClearModulePathHover() {
 }
 
 function bindModulePathHover(wrap, moduleId) {
-  const useLocalIngress = () => {
-    if (getPathHighlightMode() !== 'hover') return false;
-    const routeVariants = getTakenRouteVariants(moduleId);
-    if (routeVariants.length > 1) return true;
-    const incoming = getIncomingEdgesTo(moduleId);
-    const filledIncoming = incoming.filter((inc) => {
-      const branch = filterPlayablePathEdgeKeys(getFilledEdgesForIncoming(inc.key));
-      return branch.size > 0 && branch.has(inc.key);
-    });
-    return filledIncoming.length > 1;
-  };
-
-  const onPointer = (e) => {
+  const onPointer = () => {
     const mod = moduleById(moduleId);
     if (!mod || mod.locked) {
       clearModulePathHover();
       return;
     }
-    if (useLocalIngress()) {
-      setModulePathHover(moduleId, { clientY: e.clientY });
-    } else {
-      setModulePathHover(moduleId);
-    }
+    setModulePathHover(moduleId);
   };
   const onLeave = (e) => {
     if (wrap.contains(e.relatedTarget)) return;
@@ -5969,7 +5707,6 @@ function measureIntroCords({ onReady } = {}) {
 
   const cardSizePx = pathCardSizePx();
   applySubwayLaneBundles(cordRopeSegments, { cardSizePx });
-  applyFlexStackCordAlignment(cordRopeSegments, pathMapEl, { cardSizePx });
   applySubwayLaneLayout();
   applySubwayClearOfCards(cordRopeSegments, pathMapEl);
 
@@ -6001,6 +5738,7 @@ function measureIntroCords({ onReady } = {}) {
     host.classList.add('intro-cord', 'intro-cord--subway');
     if (filled) host.classList.add('is-filled');
     if (introState.pluggingEdge === seg.key) host.classList.add('is-plugging');
+    if (!filled && isLockedChapterSpineEdge(seg.key)) host.classList.add('is-locked-spine');
     host.dataset.cordEdge = seg.key;
     return host;
   };
@@ -6150,10 +5888,7 @@ function measureIntroCords({ onReady } = {}) {
     if (cordEdgeHoverKey) {
       setCordEdgeHover(cordEdgeHoverKey);
     } else if (modulePathHoverId) {
-      setModulePathHover(modulePathHoverId, {
-        incomingEdgeKey: modulePathHoverIncomingKey ?? undefined,
-        routeVariantId: modulePathHoverRouteId ?? undefined
-      });
+      setModulePathHover(modulePathHoverId);
     } else {
       syncPersistentPathHighlights();
     }
@@ -6756,22 +6491,18 @@ window.addEventListener('wf-sync-next-play-glow', () => {
   syncPersistentPathHighlights();
 });
 
-window.addEventListener('wf-path-highlight-mode-change', () => {
-  clearModulePathHover();
-  syncPersistentPathHighlights();
-});
-
-window.addEventListener('wf-path-grid-layout-change', () => {
-  if (!isCorporateSkin() && !isSpaceSkin()) return;
-  renderModules();
-  if (isCorporateSkin()) syncCorporatePathViewport();
-  queueIntroCordLayout();
-});
-
 window.addEventListener('wf-path-lane-framing-change', () => {
   if (!isCorporateSkin()) return;
   syncCorporatePathViewport();
   queueIntroCordLayout();
+});
+
+window.addEventListener('wf-path-column-gutter-change', () => {
+  if (!isCorporateSkin() && !isSpaceSkin()) return;
+  requestAnimationFrame(() => {
+    if (isCorporateSkin()) syncCorporatePathViewport();
+    queueIntroCordLayout();
+  });
 });
 
 window.addEventListener('pageshow', (event) => {

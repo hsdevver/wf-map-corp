@@ -1,8 +1,21 @@
-.cheat-panel-fab {
+/* Invisible hover target — bottom-left corner; FAB reveals after 1s dwell */
+.cheat-panel-fab-zone {
   position: fixed;
-  left: 1rem;
-  bottom: 1rem;
+  left: 0;
+  bottom: 0;
   z-index: 100001;
+  box-sizing: border-box;
+  width: 7.25rem;
+  height: 5.75rem;
+  padding: 1rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  pointer-events: auto;
+}
+
+.cheat-panel-fab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -16,8 +29,28 @@
   line-height: 1;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(6px) scale(0.96);
   transition:
-    transform 150ms ease,
+    opacity 200ms ease,
+    transform 200ms ease,
+    visibility 0s linear 200ms,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.cheat-panel-fab--revealed,
+.cheat-panel-fab[aria-expanded='true'] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease,
+    visibility 0s,
     border-color 150ms ease,
     box-shadow 150ms ease;
 }

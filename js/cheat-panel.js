@@ -23,7 +23,7 @@ import {
   setCorporateVolumeCheatMode,
   unlockAllConsequenceProgress,
   unlockVolumeModules
-} from './consequence-progress.js';
+} from './consequence-progress.js?v=flex-only-v2';
 import {
   HOVER_SOUND_CATEGORIES,
   getHoverSoundCategory,
@@ -44,7 +44,7 @@ import {
 import { getFlowWiringMode, initFlowWiringCheat, setFlowWiringMode } from './flow-wiring-cheat.js';
 
 const PANEL_ID = 'wf-cheat-panel';
-const PANEL_VERSION = 'corp-16';
+const PANEL_VERSION = 'corp-18';
 
 function isWorkflowIntroPage() {
   return /\/workflow-intro\//.test(window.location.pathname);
@@ -64,20 +64,81 @@ function panelIsCurrent(panel) {
   return true;
 }
 
-function ensureCheatFab() {
-  let fab = document.getElementById('wf-cheat-fab');
-  if (fab) return fab;
+const CHEAT_FAB_REVEAL_MS = 1000;
+let cheatFabRevealTimer = 0;
 
-  fab = document.createElement('button');
-  fab.id = 'wf-cheat-fab';
-  fab.type = 'button';
-  fab.className = 'cheat-panel-fab';
-  fab.setAttribute('aria-label', 'Open cheat panel');
-  fab.setAttribute('aria-expanded', 'false');
-  fab.innerHTML =
-    '<span class="cheat-panel-fab__mark" aria-hidden="true">◇</span><span class="cheat-panel-fab__label">Cheat</span>';
-  fab.addEventListener('click', () => toggleCheatPanel());
-  document.body.appendChild(fab);
+function cheatFabRevealDelayMs() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : CHEAT_FAB_REVEAL_MS;
+}
+
+function clearCheatFabRevealTimer() {
+  if (!cheatFabRevealTimer) return;
+  clearTimeout(cheatFabRevealTimer);
+  cheatFabRevealTimer = 0;
+}
+
+function setCheatFabRevealed(revealed) {
+  const fab = document.getElementById('wf-cheat-fab');
+  if (!fab) return;
+  const visible = revealed || fab.getAttribute('aria-expanded') === 'true';
+  fab.classList.toggle('cheat-panel-fab--revealed', visible);
+  fab.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  if (visible) fab.removeAttribute('tabindex');
+  else fab.setAttribute('tabindex', '-1');
+}
+
+function wireCheatFabReveal(zone) {
+  if (zone.dataset.cheatFabRevealWired === '1') return;
+  zone.dataset.cheatFabRevealWired = '1';
+
+  const fab = document.getElementById('wf-cheat-fab');
+  if (!fab) return;
+
+  const scheduleReveal = () => {
+    clearCheatFabRevealTimer();
+    if (fab.classList.contains('cheat-panel-fab--revealed')) return;
+    cheatFabRevealTimer = window.setTimeout(() => {
+      cheatFabRevealTimer = 0;
+      setCheatFabRevealed(true);
+    }, cheatFabRevealDelayMs());
+  };
+
+  const hideUnlessPinned = () => {
+    clearCheatFabRevealTimer();
+    if (fab.getAttribute('aria-expanded') === 'true') return;
+    setCheatFabRevealed(false);
+  };
+
+  zone.addEventListener('pointerenter', scheduleReveal);
+  zone.addEventListener('pointerleave', hideUnlessPinned);
+  zone.addEventListener('pointercancel', hideUnlessPinned);
+  setCheatFabRevealed(false);
+}
+
+function ensureCheatFab() {
+  let zone = document.getElementById('wf-cheat-fab-zone');
+  if (!zone) {
+    zone = document.createElement('div');
+    zone.id = 'wf-cheat-fab-zone';
+    zone.className = 'cheat-panel-fab-zone';
+    document.body.appendChild(zone);
+  }
+
+  let fab = document.getElementById('wf-cheat-fab');
+  if (!fab) {
+    fab = document.createElement('button');
+    fab.id = 'wf-cheat-fab';
+    fab.type = 'button';
+    fab.className = 'cheat-panel-fab';
+    fab.setAttribute('aria-label', 'Open cheat panel');
+    fab.setAttribute('aria-expanded', 'false');
+    fab.innerHTML =
+      '<span class="cheat-panel-fab__mark" aria-hidden="true">◇</span><span class="cheat-panel-fab__label">Cheat</span>';
+    fab.addEventListener('click', () => toggleCheatPanel());
+  }
+
+  if (fab.parentElement !== zone) zone.appendChild(fab);
+  wireCheatFabReveal(zone);
   return fab;
 }
 
@@ -264,8 +325,8 @@ function syncPanelUi(panel) {
     themeNote.hidden = false;
     themeNote.textContent =
       state.corporateAppearance === 'color'
-        ? 'Drives the hero gradient, volume nav, cords, and accents. Lighter and darker stops are derived automatically.'
-        : 'Drives accents, buttons, borders, and path cords. The hero photo stays the same.';
+        ? 'Sets the exact primary for paths, stars, and accents. Hero gradient stops are derived separately.'
+        : 'Sets the exact primary for paths, stars, and accents. The hero photo stays the same.';
   }
 
   const colorInput = panel.querySelector('[data-theme-color-input]');
@@ -330,6 +391,8 @@ function setPanelOpen(panel, open) {
   panel.hidden = !open;
   const fab = document.getElementById('wf-cheat-fab');
   fab?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) setCheatFabRevealed(true);
+  else if (!document.getElementById('wf-cheat-fab-zone')?.matches(':hover')) setCheatFabRevealed(false);
 }
 
 const CHEAT_PANEL_TRIGGERS =

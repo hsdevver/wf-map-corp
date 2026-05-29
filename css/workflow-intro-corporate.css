@@ -4,7 +4,9 @@ html[data-skin='corporate'] {
   --corporate-inset-x: clamp(1.5rem, 3.5vw, 2.5rem);
   --card-size: clamp(4.5rem, calc((100vw - 22rem) / 5), 22.5rem);
   --card-row-size: var(--card-size);
-  --intro-col-gap: clamp(1.25rem, 2.8vw, 3.75rem);
+  /* Column gutter cheat (path-column-gutter.js) scales horizontal spacing via --path-col-gap-scale */
+  --path-col-gap-base: clamp(1.25rem, 2.8vw, 3.75rem);
+  --intro-col-gap: calc(var(--path-col-gap-base) * var(--path-col-gap-scale, 1));
   --intro-branch-gap: calc(var(--intro-col-gap) * 1.5);
   --intro-row-gap: clamp(2.25rem, 4.2vh, 3.5rem);
   /* Inset edge columns so hover scale (~1.03) + next-play glow stay inside the path clip */
@@ -18,6 +20,9 @@ html[data-skin='corporate'] {
   --corporate-pop-dur: 0.48s;
   --corporate-accent: #c85a42;
   --corporate-accent-soft: rgba(200, 90, 66, 0.24);
+  /* Untaken pathway — opaque, dull tint of accent (reads like soft glass, not alpha white) */
+  --path-spine-muted-stroke: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 10%, #ffffff);
+  --path-spine-muted-stroke-hover: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 22%, #ffffff);
   --corporate-column-head-offset: clamp(2rem, 6vh, 3.5rem);
   --activity-icon-play: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 38%, #ffffff);
   --activity-icon-score: color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff);
@@ -1817,81 +1822,29 @@ html[data-skin='corporate'] .intro-corporate-board__path .intro-path-map {
   box-shadow: none;
   transform: none;
   --path-map-scale: 1;
-  --path-edge-fade: clamp(1.75rem, 5vh, 3.25rem);
   overflow: hidden;
   transition:
     transform 0.38s var(--corporate-pop-ease, ease),
     opacity 0.38s var(--corporate-pop-ease, ease);
 }
 
-/* Edge blur strips — DOM + backdrop-filter (see path-map-edge-blur.js) */
-html[data-skin='corporate'] .intro-path-map.has-path-edge-blur {
-  --path-edge-blur-zone: var(--path-edge-fade, clamp(1.75rem, 5vh, 3.25rem));
+/* Edge feather — mask-image on the path map container (see path-map-edge-mask.js) */
+html[data-skin='corporate'] .intro-path-map.has-path-edge-mask {
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
-html[data-skin='corporate'] .intro-path-map__edge-blur {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-stack {
-  position: absolute;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  height: var(--path-edge-blur-zone);
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-stack--top {
-  top: 0;
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom {
-  bottom: 0;
-  flex-direction: column-reverse;
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-layer {
-  flex: 1 1 0;
-  min-height: 0;
-  -webkit-backdrop-filter: blur(var(--path-edge-blur-amount, 12px)) saturate(1.12);
-  backdrop-filter: blur(var(--path-edge-blur-amount, 12px)) saturate(1.12);
-  pointer-events: none;
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-stack--top .intro-path-map__edge-blur-layer {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
-}
-
-html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom .intro-path-map__edge-blur-layer {
-  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 100%);
-  mask-image: linear-gradient(to top, #000 0%, transparent 100%);
-}
-
-@supports not (
-  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+@supports (
+  (transition: -webkit-mask-image 0.01s) or (transition: mask-image 0.01s)
 ) {
-  html[data-skin='corporate'] .intro-path-map__edge-blur-layer {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--corporate-ink, #0f1218) 35%, transparent),
-      transparent
-    );
-  }
-
-  html[data-skin='corporate'] .intro-path-map__edge-blur-stack--bottom .intro-path-map__edge-blur-layer {
-    background: linear-gradient(
-      to top,
-      color-mix(in srgb, var(--corporate-ink, #0f1218) 35%, transparent),
-      transparent
-    );
+  html[data-skin='corporate'] .intro-path-map.has-path-edge-mask {
+    transition:
+      mask-image 150ms ease,
+      -webkit-mask-image 150ms ease;
   }
 }
 
@@ -2065,11 +2018,17 @@ html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--sheen {
   display: none;
 }
 
-html[data-skin='corporate'] .intro-cord--subway .intro-cord-rope--body {
+html[data-skin='corporate'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .intro-cord-rope--body,
+html[data-skin='space'] .intro-cord--subway:not(.is-filled):not(.is-plugging) .intro-cord-rope--body {
   stroke-width: 4.5;
-  stroke: rgba(255, 255, 255, 0.32);
+  stroke: var(--path-spine-muted-stroke);
   filter: none;
   opacity: 1;
+}
+
+html[data-skin='corporate'] .intro-cord--subway.is-locked-spine:not(.is-filled) .intro-cord-rope--body,
+html[data-skin='space'] .intro-cord--subway.is-locked-spine:not(.is-filled) .intro-cord-rope--body {
+  stroke: var(--path-spine-muted-stroke);
 }
 
 html[data-skin='corporate'] .intro-cord--subway.is-corporate-spine-hidden {
@@ -2103,7 +2062,8 @@ html[data-skin='corporate'] .intro-corporate-board__path .intro-path-grid {
   display: grid;
 }
 
-html[data-skin='corporate'] .intro-path-grid {
+html[data-skin='corporate'] .intro-path-grid,
+html[data-skin='corporate'] #intro-columns {
   width: max-content;
   max-width: none;
   height: auto;
@@ -2148,20 +2108,20 @@ html[data-skin='corporate'] .intro-path-map.is-path-column-revealing:not(.is-pat
 }
 
 /* Flex path grid — one lane row; spine solos + branch stacks vertically centered */
-html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex {
+html[data-skin='corporate'] .intro-path-grid.is-path-grid-flex {
   align-items: center;
   align-content: center;
   row-gap: var(--intro-row-gap);
 }
 
-html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex .intro-module-wrap--solo {
+html[data-skin='corporate'] .intro-path-grid.is-path-grid-flex .intro-module-wrap--solo {
   grid-row: 1;
   align-self: center;
   justify-self: center;
 }
 
-html[data-path-grid-layout='flex'] .intro-path-stack--branch,
-html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex .intro-path-stack--branch {
+html[data-skin='corporate'] .intro-path-stack--branch,
+html[data-skin='corporate'] .intro-path-grid.is-path-grid-flex .intro-path-stack--branch {
   display: flex;
   flex-direction: column;
   gap: var(--intro-row-gap);
@@ -2171,6 +2131,10 @@ html[data-path-grid-layout='flex'] .intro-path-grid.is-path-grid-flex .intro-pat
   align-self: center;
   justify-self: center;
   box-sizing: border-box;
+}
+
+html[data-skin='corporate'] .intro-path-stack--branch.intro-path-stack--pair {
+  gap: calc(var(--intro-row-gap) * 0.5);
 }
 
 html[data-skin='corporate'] .intro-path-stack--branch .intro-module-wrap {
@@ -2279,19 +2243,14 @@ html[data-skin='corporate'] .module-card.locked .module-thumb {
   }
 }
 
-html[data-skin='corporate'] .module-card.locked .module-thumb__img {
-  display: none;
-}
-
-/* Cheat: frosted glass over blurred chapter photo (locked + unlocked) */
-html[data-skin='corporate'].wf-chapter-thumb-image .module-card.locked .module-thumb {
+html[data-skin='corporate'] .module-card.locked .module-thumb {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(12px) saturate(1.35);
   backdrop-filter: blur(12px) saturate(1.35);
 }
 
-html[data-skin='corporate'].wf-chapter-thumb-image .module-card.locked .module-thumb__img {
+html[data-skin='corporate'] .module-card.locked .module-thumb__img {
   display: block;
   width: 100%;
   height: 100%;
@@ -2301,7 +2260,7 @@ html[data-skin='corporate'].wf-chapter-thumb-image .module-card.locked .module-t
   transform: scale(1.14);
 }
 
-html[data-skin='corporate'].wf-chapter-thumb-image .module-card.locked .module-thumb__overlay {
+html[data-skin='corporate'] .module-card.locked .module-thumb__overlay {
   opacity: 1;
   background: linear-gradient(
     145deg,
@@ -2335,18 +2294,6 @@ html[data-skin='corporate'] .module-card:not(.locked) .module-thumb__overlay {
   pointer-events: none;
 }
 
-html[data-skin='corporate'] .module-card.locked .module-thumb__overlay {
-  opacity: 1;
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(255, 255, 255, 0.1) 42%,
-    rgba(255, 255, 255, 0.04) 100%
-  );
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-}
 
 html[data-skin='corporate'] .module-card.locked .module-thumb__label {
   background: linear-gradient(
@@ -2451,10 +2398,14 @@ html[data-skin='corporate'] .module-thumb__label {
   gap: 0.22rem;
 }
 
-html[data-skin='corporate'] .module-thumb__chapter {
-  font-size: clamp(0.5625rem, 0.9vw, 0.6875rem);
-  font-weight: 300;
-  letter-spacing: 0.16em;
+/* Chapter labels removed from path cards */
+html[data-skin='corporate'] #intro-path-map .module-thumb__chapter,
+html[data-skin='corporate'] .intro-path-map .module-thumb__chapter,
+html[data-skin='space'] #intro-path-map .module-thumb__chapter,
+html[data-skin='space'] .intro-path-map .module-thumb__chapter,
+html[data-skin='corporate'] .intro-path-column-labels,
+html[data-skin='space'] .intro-path-column-labels {
+  display: none !important;
 }
 
 html[data-skin='corporate'] .module-thumb__name {
@@ -2547,7 +2498,7 @@ html[data-skin='corporate'] .module-card.is-unlocking .module-thumb__overlay {
     background 0.52s ease;
 }
 
-html[data-skin='corporate'].wf-chapter-thumb-image .module-card.is-unlocking .module-thumb__img {
+html[data-skin='corporate'] .module-card.is-unlocking .module-thumb__img {
   display: block;
 }
 
@@ -2616,7 +2567,7 @@ html[data-skin='corporate']
   .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
   .intro-cord.is-path-highlight:not(.is-filled)
   .intro-cord-rope--body {
-  stroke: rgba(255, 255, 255, 0.72);
+  stroke: var(--path-spine-muted-stroke-hover);
   filter: drop-shadow(
     0 0 12px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 48%, transparent)
   );
@@ -2739,23 +2690,27 @@ html[data-skin='space'] .intro-path-map:is(.is-module-path-hover, .is-path-highl
 }
 
 /* Next-to-play pulse must survive path hover (newly unlocked chapter) */
+html[data-skin='corporate'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
+html[data-skin='space'] .intro-corporate-board.is-pop-complete .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
 html[data-skin='corporate']
+  .intro-corporate-board.is-pop-complete
   .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
   .intro-module-wrap--next-play.is-path-hover-focus
   .module-card:not(.locked),
 html[data-skin='space']
+  .intro-corporate-board.is-pop-complete
   .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
   .intro-module-wrap--next-play.is-path-hover-focus
-  .module-card:not(.locked),
-html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
-html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop {
-  animation: intro-module-next-play-glow 2.5s ease-in-out infinite;
+  .module-card:not(.locked) {
+  transform-origin: center center;
+  animation:
+    intro-module-next-play-glow 2.5s ease-in-out infinite,
+    intro-module-next-play-scale-pulse 2.4s ease-in-out infinite;
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff),
     0 0 22px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 62%, transparent),
     0 0 44px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 34%, transparent),
     0 10px 26px rgba(0, 0, 0, 0.26);
-  transform: scale(1.03);
   filter: brightness(1.06);
 }
 
@@ -2824,6 +2779,8 @@ html[data-skin='corporate']
     transform: translate3d(0, -1px, 0) scale(1.01);
   }
 
+  html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked),
+  html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked),
   html[data-skin='corporate']
     .intro-path-map:is(.is-module-path-hover, .is-path-highlight-persistent)
     .intro-module-wrap--next-play.is-path-hover-focus
@@ -2835,7 +2792,7 @@ html[data-skin='corporate']
   html[data-skin='corporate'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop,
   html[data-skin='space'] .intro-module-wrap--next-play .module-card:not(.locked).is-hover-pop {
     animation: none;
-    transform: translate3d(0, -1px, 0) scale(1.03);
+    transform: translate3d(0, -1px, 0) scale(1);
     box-shadow:
       0 0 0 2px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 58%, #ffffff),
       0 0 22px color-mix(in srgb, var(--corporate-accent, var(--theme-color)) 62%, transparent),
@@ -3252,7 +3209,7 @@ html.is-corporate-handoff[data-skin='corporate'] .intro-corporate-board.is-volum
 
 @media (max-width: 768px) {
   html[data-skin='corporate'] {
-    --intro-col-gap: 1.35rem;
+    --path-col-gap-base: 1.35rem;
     --intro-row-gap: 1.15rem;
   }
 

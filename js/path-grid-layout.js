@@ -1,65 +1,43 @@
 /**
- * Corporate path grid — strict (grid + fork rows) vs flex (centered branch stacks).
+ * Corporate path grid — flex cords (centered branch stacks).
  */
 
-const STORAGE_KEY = 'wf-cheat-path-grid-layout-v1';
+/** @typedef {'flex'} PathGridLayoutMode */
 
-/** @typedef {'flex' | 'strict'} PathGridLayoutMode */
+export const PATH_GRID_LAYOUT = 'flex';
 
-export const PATH_GRID_LAYOUT_MODES = [
-  { id: 'flex', label: 'Flex' },
-  { id: 'strict', label: 'Strict' }
-];
+/** @deprecated Flex-only layout — kept for cached imports */
+export const PATH_GRID_LAYOUT_MODES = [PATH_GRID_LAYOUT];
 
-/** @returns {PathGridLayoutMode} */
+export function applyPathGridLayoutMode() {
+  document.documentElement.dataset.pathGridLayout = PATH_GRID_LAYOUT;
+}
+
+/** @deprecated Always flex */
 export function getPathGridLayoutMode() {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw === 'flex' || raw === 'strict') return raw;
-  } catch {
-    /* ignore */
-  }
-  return 'flex';
+  return PATH_GRID_LAYOUT;
 }
 
-/** @param {PathGridLayoutMode} mode */
-export function setPathGridLayoutMode(mode) {
-  const next = mode === 'strict' ? 'strict' : 'flex';
-  sessionStorage.setItem(STORAGE_KEY, next);
-  applyPathGridLayoutMode(next);
-  return next;
+/** @deprecated No-op — layout is always flex */
+export function setPathGridLayoutMode(_mode) {
+  applyPathGridLayoutMode();
 }
 
-/** @param {PathGridLayoutMode} [mode] */
-export function applyPathGridLayoutMode(mode = getPathGridLayoutMode()) {
-  document.documentElement.dataset.pathGridLayout = mode;
-  window.dispatchEvent(new CustomEvent('wf-path-grid-layout-change', { detail: { mode } }));
-}
-
-export function isPathGridFlexLayout(mode = getPathGridLayoutMode()) {
-  return mode === 'flex';
+/** @deprecated Always true */
+export function isPathGridFlexLayout() {
+  return true;
 }
 
 /**
  * Row tracks used for flex lane height — deepest branch stack, not graph row spread.
  * @param {{ column: number, row: number }[]} modules
- * @param {PathGridLayoutMode} [mode]
  */
-export function pathGridEffectiveRowCount(modules, mode = getPathGridLayoutMode()) {
+export function pathGridEffectiveRowCount(modules) {
   if (!modules?.length) return 1;
-  const maxGraphRow = Math.max(1, ...modules.map((m) => m.row));
-  if (mode !== 'flex' || !pathGridNeedsLayoutRules(modules)) return maxGraphRow;
-
-  const byColumn = new Map();
-  for (const mod of modules) {
-    if (!byColumn.has(mod.column)) byColumn.set(mod.column, []);
-    byColumn.get(mod.column).push(mod);
+  if (!pathGridNeedsLayoutRules(modules)) {
+    return Math.max(1, ...modules.map((m) => m.row));
   }
-  let maxStack = 1;
-  for (const colMods of byColumn.values()) {
-    maxStack = Math.max(maxStack, colMods.length);
-  }
-  return maxStack;
+  return PATH_GRID_SPINE_ROW + 1;
 }
 
 /** @param {string | number | null | undefined} chapter */
@@ -69,7 +47,7 @@ export function chapterLaneLetter(chapter) {
   return match ? match[1].toUpperCase() : null;
 }
 
-/** Main spine row — chapters 1, 2, 4, 5 and grid-strict B lanes on the spine. */
+/** Main spine row — chapters 1, 2, 4, 5 and B lanes on the spine. */
 export const PATH_GRID_SPINE_ROW = 2;
 
 /** True when the graph uses fork columns (not a single-row linear path). */
@@ -89,8 +67,8 @@ export function pathGridHasVerticalLanes(modules) {
   return pathGridNeedsLayoutRules(modules);
 }
 
-/** Strict grid: A top, B on spine, C bottom (vol. 3 fan). Used for flex stack order & spacing. */
-function laneRowStrictGrid(chapter) {
+/** Flex stack: A top, spine B, C bottom (vol. 3 fan). */
+function laneRowFlexGrid(chapter) {
   const lane = chapterLaneLetter(chapter);
   if (lane === 'A') return 1;
   if (lane === 'B') return PATH_GRID_SPINE_ROW;
@@ -98,11 +76,11 @@ function laneRowStrictGrid(chapter) {
   return PATH_GRID_SPINE_ROW;
 }
 
-/** Strict grid: A top, B bottom when a column has no C lane (vol. 1-style fork on the grid). */
-function laneRowStrictGridFork(chapter) {
+/** Flex 2-way pair — adjacent slots in one column. */
+function laneRowFlexGridFork(chapter) {
   const lane = chapterLaneLetter(chapter);
   if (lane === 'A') return 1;
-  if (lane === 'B') return 3;
+  if (lane === 'B') return 2;
   return PATH_GRID_SPINE_ROW;
 }
 
@@ -110,9 +88,8 @@ function laneRowStrictGridFork(chapter) {
  * Resolve grid row for one module (exported for DOM sync).
  * @param {{ column: number, row: number, chapter?: string | number }} mod
  * @param {{ column: number, chapter?: string | number }[]} modules
- * @param {PathGridLayoutMode} [mode]
  */
-export function resolvePathGridRow(mod, modules, mode = getPathGridLayoutMode()) {
+export function resolvePathGridRow(mod, modules) {
   if (!modules?.length || !pathGridNeedsLayoutRules(modules)) return mod.row;
 
   const colMods = modules.filter((m) => m.column === mod.column);
@@ -120,27 +97,29 @@ export function resolvePathGridRow(mod, modules, mode = getPathGridLayoutMode())
     colMods.map((m) => chapterLaneLetter(m.chapter)).filter(Boolean)
   );
 
-  if (mode === 'flex') {
-    /** Flex: logical strict rows for stack order (DOM centers the branch). */
-    return laneRowStrictGrid(mod.chapter);
+  if (!letters.has('C') && colMods.length === 2) {
+    return laneRowFlexGridFork(mod.chapter);
   }
-
-  /** Strict: grid placement — fork spread when no C lane, else A / spine / C rows. */
-  if (letters.has('C')) return laneRowStrictGrid(mod.chapter);
-  return laneRowStrictGridFork(mod.chapter);
+  return laneRowFlexGrid(mod.chapter);
 }
 
 /**
  * @template {object} T
  * @param {T[]} modules
- * @param {PathGridLayoutMode} [mode]
  * @returns {T[]}
  */
-export function layoutPathGridModules(modules, mode = getPathGridLayoutMode()) {
+/** Map-local Y of the main-path spine center (middle row of the 3-row fork band). */
+export function flexMainPathSpineCenterY(cardSizePx, rowGapPx, laneRows = 3) {
+  const rows = Math.max(1, laneRows);
+  const spineRow = Math.min(PATH_GRID_SPINE_ROW, rows);
+  return (spineRow - 1) * (cardSizePx + rowGapPx) + cardSizePx * 0.5;
+}
+
+export function layoutPathGridModules(modules) {
   if (!modules?.length || !pathGridNeedsLayoutRules(modules)) return modules;
 
   return modules.map((mod) => {
-    const row = resolvePathGridRow(mod, modules, mode);
+    const row = resolvePathGridRow(mod, modules);
     return row === mod.row ? mod : { ...mod, row };
   });
 }

@@ -1,4 +1,3 @@
-import { getChapterCapsLabel } from './consequence-flow.js?v=flow-wiring-3b-4a-v2';
 
 export const STORAGE_MODULE_LAYOUT = 'wf-map-corp-module-layout';
 export const DEFAULT_MODULE_LAYOUT = 'clean';
@@ -132,11 +131,6 @@ export function createModuleThumbLabel(mod) {
   const label = document.createElement('div');
   label.className = 'module-thumb__label';
 
-  const chapter = document.createElement('p');
-  chapter.className = 'module-thumb__chapter';
-  chapter.textContent = getChapterCapsLabel(mod);
-  label.appendChild(chapter);
-
   const name = document.createElement('p');
   name.className = 'module-thumb__name';
   name.textContent = mod.title ?? '';
@@ -147,9 +141,7 @@ export function createModuleThumbLabel(mod) {
 }
 
 export function syncModuleThumbLabel(card, mod) {
-  const chapterEl = card.querySelector('.module-thumb__chapter');
   const nameEl = card.querySelector('.module-thumb__name');
-  if (chapterEl) chapterEl.textContent = getChapterCapsLabel(mod);
   if (nameEl) {
     nameEl.textContent = mod.title ?? '';
     nameEl.hidden = Boolean(mod.locked);

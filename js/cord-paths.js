@@ -449,6 +449,32 @@ export const SUBWAY_LANE_PITCH = 11;
 /** Horizontal spacing between vertical subway trunks (avoids tube crossings). */
 export const SUBWAY_MID_LANE_PITCH = 28;
 
+/** @param {HTMLElement | null} pathMapEl */
+function readPathGridColumnGapPx(pathMapEl) {
+  const grid =
+    pathMapEl?.querySelector('#intro-columns') ?? pathMapEl?.querySelector('.intro-path-grid');
+  if (!grid) return 0;
+  const gap = parseFloat(getComputedStyle(grid).columnGap);
+  return Number.isFinite(gap) && gap > 0 ? gap : 0;
+}
+
+/**
+ * Horizontal stub length between cards — scales with column gutter (wide cheat).
+ * @param {number} dx
+ * @param {HTMLElement | null} [pathMapEl]
+ */
+export function computeSubwayLaneGap(dx, pathMapEl = null) {
+  const span = Math.abs(dx);
+  if (span < 6) return Math.max(4, span * 0.35);
+  const ratioGap = Math.min(96, Math.max(24, span * 0.32));
+  const colGap = readPathGridColumnGapPx(pathMapEl);
+  if (colGap > 0) {
+    const maxStub = Math.max(14, (span - 16) * 0.5);
+    return Math.min(maxStub, ratioGap, colGap * 0.42);
+  }
+  return Math.min(72, ratioGap);
+}
+
 /** @deprecated Use subwayJunctionLanePitch — kept for older imports */
 export const SUBWAY_FROM_FAN_PITCH = 15;
 
@@ -465,12 +491,49 @@ export function subwayJunctionLanePitch(cardSizePx = 194) {
   return Math.max(14, Math.round(cardSizePx * span * 0.5));
 }
 
+function isCenterJunctionAlong(along) {
+  return Math.abs(along - 0.5) < 0.06;
+}
+
+/** Same-row lane with center in/out — keep a straight horizontal tube on the card edge. */
+function isSameRowStraightAtEnd(seg, end) {
+  const fromAlong = seg.anchorOpts?.fromAlong ?? 0.5;
+  const toAlong = seg.anchorOpts?.toAlong ?? 0.5;
+  if (!isCenterJunctionAlong(fromAlong) || !isCenterJunctionAlong(toAlong)) return false;
+  if (Math.abs(seg.p0.y - seg.p3.y) > 14) return false;
+  const along = end === 'p0' ? fromAlong : toAlong;
+  return isCenterJunctionAlong(along);
+}
+
 /**
  * Equal-spaced stack on one card edge — preserves upper→lower order from anchor along.
+ * Pins center straight-through lanes so merge paths (e.g. CM → lower branch) are not bumped.
  */
 function bundleJunctionEndpoints(list, end, pitch) {
   if (list.length < 2) return;
   const alongKey = end === 'p0' ? 'fromAlong' : 'toAlong';
+
+  const straights = list.filter((seg) => isSameRowStraightAtEnd(seg, end));
+  if (straights.length === 1 && list.length === 2) {
+    const pinned = straights[0];
+    const other = list.find((seg) => seg !== pinned);
+    if (!other) return;
+    const pinY = end === 'p0' ? pinned.p0.y : pinned.p3.y;
+    const otherAlong = other.anchorOpts?.[alongKey] ?? 0.5;
+
+    if (isCenterJunctionAlong(otherAlong)) {
+      if (end === 'p0') other.p0 = { x: other.p0.x, y: pinY };
+      else other.p3 = { x: other.p3.x, y: pinY };
+      return;
+    }
+
+    const offset = otherAlong < 0.5 ? -pitch : pitch;
+    const y = pinY + offset;
+    if (end === 'p0') other.p0 = { x: other.p0.x, y };
+    else other.p3 = { x: other.p3.x, y };
+    return;
+  }
+
   list.sort((a, b) => {
     const aa = a.anchorOpts?.[alongKey] ?? 0.5;
     const bb = b.anchorOpts?.[alongKey] ?? 0.5;
@@ -541,10 +604,7 @@ function flexWrapCenterY(wrap, mapRect) {
 export function applyFlexStackCordAlignment(segments, pathMapEl) {
   if (!pathMapEl || !segments?.length) return;
   const pathRoot = pathMapEl.closest('.intro-path-map');
-  if (
-    pathRoot?.classList.contains('is-path-grid-flex') !== true &&
-    document.documentElement.dataset.pathGridLayout !== 'flex'
-  ) {
+  if (pathRoot?.classList.contains('is-path-grid-flex') !== true) {
     return;
   }
 
@@ -664,7 +724,7 @@ export function applyCorporateSubwayLaneLayout(segments, isEdgeFilled) {
       const to = rl ? seg.p3 : seg.p0;
       const dx = to.x - from.x;
       const dirX = dx >= 0 ? 1 : -1;
-      const laneGap = Math.min(72, Math.max(28, Math.abs(dx) * 0.26));
+      const laneGap = computeSubwayLaneGap(dx, null);
       const exitX = from.x + dirX * laneGap;
       const entryX = to.x - dirX * laneGap;
       const midX = (exitX + entryX) * 0.5;
@@ -676,32 +736,78 @@ export function applyCorporateSubwayLaneLayout(segments, isEdgeFilled) {
       };
     });
 
-    const keptUnfilledSpans = [];
+    applyCorporateSubwaySpineVisibilityInBucket(list, isEdgeFilled);
+  }
+}
 
-    for (const { seg } of list) {
-      const filled = isEdgeFilled(seg.key);
-      seg.filled = filled;
-      if (filled) {
-        seg.corporateSpineHidden = false;
-        continue;
-      }
+/**
+ * Hide duplicate unfilled spines in the same gutter (does not change midX / subwayLane).
+ * @param {{ seg: { key: string, isSubway?: boolean, filled?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object, corporateSpineHidden?: boolean } }[]} list
+ * @param {(edgeKey: string) => boolean} isEdgeFilled
+ */
+function applyCorporateSubwaySpineVisibilityInBucket(list, isEdgeFilled) {
+  const keptUnfilledSpans = [];
 
-      const { from, to } = subwaySegmentEndpoints(seg);
-      const yLo = Math.min(from.y, to.y);
-      const yHi = Math.max(from.y, to.y);
-      const midX = Math.round(seg.anchorOpts?.subwayMidX ?? (from.x + to.x) * 0.5);
-
-      const overlaps = keptUnfilledSpans.some(
-        (k) => k.midX === midX && Math.min(k.yHi, yHi) - Math.max(k.yLo, yLo) > 12
-      );
-
-      if (overlaps) {
-        seg.corporateSpineHidden = true;
-      } else {
-        seg.corporateSpineHidden = false;
-        keptUnfilledSpans.push({ midX, yLo, yHi });
-      }
+  for (const { seg } of list) {
+    const filled = isEdgeFilled(seg.key);
+    seg.filled = filled;
+    if (filled) {
+      seg.corporateSpineHidden = false;
+      continue;
     }
+
+    const { from, to } = subwaySegmentEndpoints(seg);
+    const yLo = Math.min(from.y, to.y);
+    const yHi = Math.max(from.y, to.y);
+    const midX = Math.round(seg.anchorOpts?.subwayMidX ?? (from.x + to.x) * 0.5);
+
+    const overlaps = keptUnfilledSpans.some(
+      (k) => k.midX === midX && Math.min(k.yHi, yHi) - Math.max(k.yLo, yLo) > 12
+    );
+
+    if (overlaps) {
+      seg.corporateSpineHidden = true;
+    } else {
+      seg.corporateSpineHidden = false;
+      keptUnfilledSpans.push({ midX, yLo, yHi });
+    }
+  }
+}
+
+/**
+ * Flex card layout + strict-style separated lanes — stagger midX from anchor subwayLane,
+ * then dedupe unfilled spine ghosts (same as strict, without collapsing to one trunk).
+ * @param {{ key: string, isSubway?: boolean, filled?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object, corporateSpineHidden?: boolean }[]} segments
+ * @param {(edgeKey: string) => boolean} isEdgeFilled
+ * @param {number} [pitch]
+ */
+export function applyFlexPathSubwayLaneLayout(
+  segments,
+  isEdgeFilled,
+  pitch = SUBWAY_MID_LANE_PITCH,
+  pathMapEl = null
+) {
+  if (!segments?.length) return;
+  applySubwayMidXLanes(segments, pitch, pathMapEl);
+
+  const buckets = new Map();
+  for (const seg of segments) {
+    if (!seg.isSubway) continue;
+    const rl = seg.fromSide === 'right' && seg.toSide === 'left';
+    const lr = seg.fromSide === 'left' && seg.toSide === 'right';
+    if (!rl && !lr) continue;
+    const key = subwayGutterBucketKey(seg);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({ seg, rl });
+  }
+
+  for (const list of buckets.values()) {
+    list.sort((a, b) => {
+      const aMid = (a.seg.p0.y + a.seg.p3.y) * 0.5;
+      const bMid = (b.seg.p0.y + b.seg.p3.y) * 0.5;
+      return aMid - bMid;
+    });
+    applyCorporateSubwaySpineVisibilityInBucket(list, isEdgeFilled);
   }
 }
 
@@ -709,7 +815,7 @@ export function applyCorporateSubwayLaneLayout(segments, isEdgeFilled) {
  * Stagger each edge's vertical trunk (midX) so parallel tubes between the same columns do not cross.
  * @param {{ key: string, isSubway?: boolean, fromSide: string, toSide: string, p0: {x:number,y:number}, p3: {x:number,y:number}, anchorOpts?: object }[]} segments
  */
-export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
+export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH, pathMapEl = null) {
   if (!segments?.length) return;
 
   const buckets = new Map();
@@ -750,7 +856,7 @@ export function applySubwayMidXLanes(segments, pitch = SUBWAY_MID_LANE_PITCH) {
       const to = rl ? seg.p3 : seg.p0;
       const dx = to.x - from.x;
       const dirX = dx >= 0 ? 1 : -1;
-      const laneGap = Math.min(72, Math.max(28, Math.abs(dx) * 0.26 + Math.max(0, n - 2) * 3));
+      const laneGap = computeSubwayLaneGap(dx, pathMapEl) + Math.max(0, n - 2) * 3;
       const exitX = from.x + dirX * laneGap;
       const entryX = to.x - dirX * laneGap;
       const baseMidX = (exitX + entryX) * 0.5;
@@ -786,9 +892,7 @@ export function applySubwayClearOfCards(segments, pathMapEl, clearance = SUBWAY_
     const dx = to.x - from.x;
     const dirX = dx >= 0 ? 1 : -1;
     const dist = Math.abs(dx) || 1;
-    const laneGap =
-      seg.anchorOpts?.subwayLaneGap ??
-      Math.min(92, Math.max(40, dist * 0.34 + clearance));
+    const laneGap = seg.anchorOpts?.subwayLaneGap ?? computeSubwayLaneGap(dx, pathMapEl) + clearance * 0.15;
     const exitX = from.x + dirX * laneGap;
     const entryX = to.x - dirX * laneGap;
     let gutterLo = Math.min(exitX, entryX);
@@ -837,8 +941,11 @@ export function applySubwayClearOfCards(segments, pathMapEl, clearance = SUBWAY_
     }
     midX = Math.max(gutterLo + 2, Math.min(gutterHi - 2, midX));
 
+    const fromAlong = seg.anchorOpts?.fromAlong ?? 0.5;
+    const toAlong = seg.anchorOpts?.toAlong ?? 0.5;
+    const alongSpread = Math.abs(fromAlong - toAlong);
     const sameRowEps = 14;
-    if (Math.abs(y0 - y1) <= sameRowEps) {
+    if (Math.abs(y0 - y1) <= sameRowEps && alongSpread < 0.08) {
       const busY = (y0 + y1) * 0.5;
       if (!subwayHorizontalHits(busY, exitX2, entryX2, obstacles, clearance)) {
         seg.anchorOpts = {

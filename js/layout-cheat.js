@@ -2,36 +2,20 @@
  * Cheat-panel layout visibility — mirrors corporate board regions.
  */
 
-import {
-  PATH_GRID_LAYOUT_MODES,
-  applyPathGridLayoutMode,
-  getPathGridLayoutMode,
-  setPathGridLayoutMode
-} from './path-grid-layout.js';
+import { applyPathGridLayoutMode } from './path-grid-layout.js?v=flex-only-v2';
 import {
   PATH_LANE_FRAMING_MODES,
   applyPathLaneFramingMode,
   getPathLaneFramingMode,
   setPathLaneFramingMode
 } from './path-lane-framing.js';
-
+import {
+  PATH_COLUMN_GUTTER_MODES,
+  applyPathColumnGutterMode,
+  getPathColumnGutterMode,
+  setPathColumnGutterMode
+} from './path-column-gutter.js';
 const STORAGE_KEY = 'wf-cheat-layout-v3';
-const THUMB_STYLE_KEY = 'wf-cheat-chapter-thumb-v1';
-const PATH_HIGHLIGHT_KEY = 'wf-cheat-path-highlight-v2';
-
-/** @typedef {'backdrop' | 'image'} ChapterThumbStyle */
-/** @typedef {'hover' | 'recent' | 'completed'} PathHighlightMode */
-
-export const CHAPTER_THUMB_STYLES = [
-  { id: 'backdrop', label: 'Frosted panel' },
-  { id: 'image', label: 'Chapter image' }
-];
-
-export const PATH_HIGHLIGHT_MODES = [
-  { id: 'hover', label: 'Local hover' },
-  { id: 'recent', label: 'Recent path' },
-  { id: 'completed', label: 'All opened' }
-];
 
 /** @typedef {'hero' | 'sidebar' | 'main' | 'copy' | 'lead' | 'path' | 'skills' | 'feedback'} LayoutRegionId */
 
@@ -211,30 +195,6 @@ export function buildLayoutSkeletonHtml() {
           </div>
         </div>
       </div>
-      <span class="cheat-panel__label" id="cheat-chapter-thumb-label">Chapter cards</span>
-      <div class="cheat-panel__segmented" role="group" aria-label="Locked chapter card appearance">
-        ${CHAPTER_THUMB_STYLES.map(
-          (mode) =>
-            `<button type="button" class="cheat-panel__seg-btn" data-chapter-thumb="${mode.id}">${mode.label}</button>`
-        ).join('')}
-      </div>
-      <p class="cheat-panel__sound-note">Frosted panel: glass over the office photo. Chapter image: blurred photo inside the card.</p>
-      <span class="cheat-panel__label" id="cheat-path-highlight-label">Path highlight</span>
-      <div class="cheat-panel__segmented" role="group" aria-label="Chapter path highlight">
-        ${PATH_HIGHLIGHT_MODES.map(
-          (mode) =>
-            `<button type="button" class="cheat-panel__seg-btn" data-path-highlight="${mode.id}">${mode.label}</button>`
-        ).join('')}
-      </div>
-      <p class="cheat-panel__sound-note">Local hover: scrub taken routes into a chapter (no locked stops). Recent path: on chapter hover, only your latest taken route there. All opened: on chapter hover, every taken route into that chapter.</p>
-      <span class="cheat-panel__label" id="cheat-path-grid-layout-label">Path grid</span>
-      <div class="cheat-panel__segmented" role="group" aria-label="Chapter path grid rows">
-        ${PATH_GRID_LAYOUT_MODES.map(
-          (mode) =>
-            `<button type="button" class="cheat-panel__seg-btn" data-path-grid-layout="${mode.id}">${mode.label}</button>`
-        ).join('')}
-      </div>
-      <p class="cheat-panel__sound-note">Strict: grid rows — A top and B bottom when there is no C lane; A / spine / C when there is. Flex: same A–B–C spacing in a centered stack (strict row gap), not pinned to grid rows.</p>
       <span class="cheat-panel__label" id="cheat-path-lane-framing-label">Path lane zoom</span>
       <div class="cheat-panel__segmented" role="group" aria-label="Path lane zoom framing">
         ${PATH_LANE_FRAMING_MODES.map(
@@ -243,6 +203,14 @@ export function buildLayoutSkeletonHtml() {
         ).join('')}
       </div>
       <p class="cheat-panel__sound-note">5 columns: lane zoom fills five chapter columns (top/bottom branches may clip). Fit rows: caps card size so the full branch stack fits vertically — you may see more than five columns.</p>
+      <span class="cheat-panel__label" id="cheat-path-column-gutter-label">Column gutters</span>
+      <div class="cheat-panel__segmented" role="group" aria-label="Chapter column gutter spacing">
+        ${PATH_COLUMN_GUTTER_MODES.map(
+          (mode) =>
+            `<button type="button" class="cheat-panel__seg-btn" data-path-column-gutter="${mode.id}">${mode.label}</button>`
+        ).join('')}
+      </div>
+      <p class="cheat-panel__sound-note">Scales horizontal space between chapter columns (more room for subway tubes between cards).</p>
     </section>`;
 }
 
@@ -267,10 +235,8 @@ export function syncLayoutSkeletonUi(panel) {
     );
   });
 
-  syncChapterThumbUi(panel);
-  syncPathHighlightUi(panel);
-  syncPathGridLayoutUi(panel);
   syncPathLaneFramingUi(panel);
+  syncPathColumnGutterUi(panel);
 }
 
 /** @param {HTMLElement} panel */
@@ -286,110 +252,18 @@ export function wireLayoutCheat(panel) {
     });
   });
 
-  panel.querySelectorAll('[data-chapter-thumb]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setChapterThumbStyle(/** @type {ChapterThumbStyle} */ (btn.dataset.chapterThumb));
-      syncLayoutSkeletonUi(panel);
-    });
-  });
-
-  panel.querySelectorAll('[data-path-highlight]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setPathHighlightMode(/** @type {PathHighlightMode} */ (btn.dataset.pathHighlight));
-      syncLayoutSkeletonUi(panel);
-    });
-  });
-
-  panel.querySelectorAll('[data-path-grid-layout]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      setPathGridLayoutMode(/** @type {'flex' | 'strict'} */ (btn.dataset.pathGridLayout));
-      syncLayoutSkeletonUi(panel);
-    });
-  });
-
   panel.querySelectorAll('[data-path-lane-framing]').forEach((btn) => {
     btn.addEventListener('click', () => {
       setPathLaneFramingMode(/** @type {'five-columns' | 'fit-rows'} */ (btn.dataset.pathLaneFraming));
       syncLayoutSkeletonUi(panel);
     });
   });
-}
 
-/** @param {HTMLElement} panel */
-export function syncChapterThumbUi(panel) {
-  const style = getChapterThumbStyle();
-  panel.querySelectorAll('[data-chapter-thumb]').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.chapterThumb === style);
-  });
-}
-
-/** @returns {ChapterThumbStyle} */
-export function getChapterThumbStyle() {
-  try {
-    const raw = sessionStorage.getItem(THUMB_STYLE_KEY);
-    if (raw === 'image' || raw === 'backdrop') return raw;
-  } catch {
-    /* ignore */
-  }
-  return 'image';
-}
-
-/** @param {ChapterThumbStyle} style */
-export function setChapterThumbStyle(style) {
-  const next = style === 'image' ? 'image' : 'backdrop';
-  sessionStorage.setItem(THUMB_STYLE_KEY, next);
-  applyChapterThumbStyle(next);
-  return next;
-}
-
-/** @param {ChapterThumbStyle} [style] */
-export function applyChapterThumbStyle(style = getChapterThumbStyle()) {
-  const root = document.documentElement;
-  root.dataset.chapterThumb = style;
-  root.classList.toggle('wf-chapter-thumb-image', style === 'image');
-  root.classList.toggle('wf-chapter-thumb-backdrop', style === 'backdrop');
-  window.dispatchEvent(new CustomEvent('wf-chapter-thumb-style-change', { detail: { style } }));
-}
-
-/** @returns {PathHighlightMode} */
-export function getPathHighlightMode() {
-  try {
-    const raw = sessionStorage.getItem(PATH_HIGHLIGHT_KEY);
-    if (raw === 'hover' || raw === 'recent' || raw === 'completed') return raw;
-  } catch {
-    /* ignore */
-  }
-  return 'recent';
-}
-
-/** @param {PathHighlightMode} mode */
-export function setPathHighlightMode(mode) {
-  const next =
-    mode === 'recent' || mode === 'completed' ? mode : /** @type {PathHighlightMode} */ ('hover');
-  sessionStorage.setItem(PATH_HIGHLIGHT_KEY, next);
-  applyPathHighlightMode(next);
-  return next;
-}
-
-/** @param {PathHighlightMode} [mode] */
-export function applyPathHighlightMode(mode = getPathHighlightMode()) {
-  document.documentElement.dataset.pathHighlight = mode;
-  window.dispatchEvent(new CustomEvent('wf-path-highlight-mode-change', { detail: { mode } }));
-}
-
-/** @param {HTMLElement} panel */
-export function syncPathHighlightUi(panel) {
-  const mode = getPathHighlightMode();
-  panel.querySelectorAll('[data-path-highlight]').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.pathHighlight === mode);
-  });
-}
-
-/** @param {HTMLElement} panel */
-export function syncPathGridLayoutUi(panel) {
-  const mode = getPathGridLayoutMode();
-  panel.querySelectorAll('[data-path-grid-layout]').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.pathGridLayout === mode);
+  panel.querySelectorAll('[data-path-column-gutter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setPathColumnGutterMode(/** @type {import('./path-column-gutter.js').PathColumnGutterMode} */ (btn.dataset.pathColumnGutter));
+      syncLayoutSkeletonUi(panel);
+    });
   });
 }
 
@@ -401,14 +275,21 @@ export function syncPathLaneFramingUi(panel) {
   });
 }
 
+/** @param {HTMLElement} panel */
+export function syncPathColumnGutterUi(panel) {
+  const mode = getPathColumnGutterMode();
+  panel.querySelectorAll('[data-path-column-gutter]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.pathColumnGutter === mode);
+  });
+}
+
 export function initLayoutCheat() {
   if (/\/workflow-intro\//.test(window.location.pathname)) {
     resetCorporateDashboardLayout();
   } else {
     applyLayoutVisibility();
   }
-  applyChapterThumbStyle();
-  applyPathHighlightMode();
   applyPathGridLayoutMode();
   applyPathLaneFramingMode();
+  applyPathColumnGutterMode();
 }

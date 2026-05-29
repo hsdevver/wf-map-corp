@@ -679,28 +679,26 @@ export const CHAPTER_3_CORD_ANCHORS = {
     to: 'left',
     fromAlong: SUBWAY_JUNCTION_ALONG.upper,
     toAlong: SUBWAY_JUNCTION_ALONG.center,
-    subwayLane: 0,
+    subwayLane: 1,
     slack: 1.1,
     sagSign: -1
   },
   'c3m3b|c3m4b': {
     from: 'right',
     to: 'left',
-    ...SUBWAY_FORK_ALONG.center,
-    subwayLane: 1,
+    ...SUBWAY_FORK_ALONG.lower,
+    subwayLane: 0,
     slack: 1.1,
     sagSign: 1
   },
   'c3m3b|c3m4a': {
     from: 'right',
     to: 'left',
-    /** Mirror of 3A→4B (upper→center): center row branches up to 4A. */
-    fromAlong: SUBWAY_JUNCTION_ALONG.center,
-    toAlong: SUBWAY_JUNCTION_ALONG.upper,
-    /** Lane 2 — gutter trunk beside 3A→4A (0) and 3B→4B (1). */
-    subwayLane: 2,
+    fromAlong: SUBWAY_JUNCTION_ALONG.lower,
+    toAlong: SUBWAY_JUNCTION_ALONG.center,
+    subwayLane: 1,
     slack: 1.1,
-    sagSign: -1
+    sagSign: 1
   },
   'c3m4a|c3m5': {
     from: 'right',

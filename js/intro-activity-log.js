@@ -8,7 +8,11 @@ import {
   EMPATHY_SCORE_FOUR_STARS,
   starsFromEmpathyScore
 } from './empathy-score.js';
-import { getPlayScenario, getRuntimeModule, syncModuleScoresFromActivity } from './consequence-progress.js';
+import {
+  getPlayScenario,
+  getRuntimeModule,
+  syncModuleScoresFromActivity
+} from './consequence-progress.js?v=flex-only-v2';
 
 const STORAGE_KEY = 'wf-map-corp-activity-log';
 const MAX_STORED = 80;

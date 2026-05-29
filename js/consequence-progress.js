@@ -18,7 +18,7 @@ import {
   starsForModule,
   starsFromEmpathyScore
 } from './empathy-score.js';
-import { getPathGridLayoutMode, layoutPathGridModules } from './path-grid-layout.js';
+import { layoutPathGridModules } from './path-grid-layout.js?v=flex-only-v2';
 
 const STORAGE_KEY = 'wf-map-corp-progress';
 const CORPORATE_VOLUME_CHEAT_KEY = 'wf-cheat-corporate-volumes';
@@ -418,7 +418,7 @@ function buildRuntimeModules() {
   const raw = moduleCatalog()
     .map((m) => buildRuntimeModule(m))
     .filter(Boolean);
-  return layoutPathGridModules(raw, getPathGridLayoutMode());
+  return layoutPathGridModules(raw);
 }
 
 export function getRuntimeModule(id) {

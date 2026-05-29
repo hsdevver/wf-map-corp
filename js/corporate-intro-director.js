@@ -22,10 +22,15 @@ const INTRO_SIDE_CARD_MS = 560;
 const INTRO_SIDE_STAGGER_MS = 140;
 const INTRO_SIDE_LEAD_MS = 180;
 const EASE_NAV = 'cubic-bezier(0, 0, 0.2, 1)';
-/** Act 2 line grow — 2× original 420ms spec */
-const INTRO_CORD_GROW_MS = 840;
+/** Act 2 / volume column reveal — line grow (2× opening-chapter pacing, ÷1.5 for refresh intro) */
+const INTRO_CORD_GROW_MS = 1120;
+/** Column card pop — 0.75× the 2× opening pace, ÷1.5 for refresh intro */
+const PATH_COLUMN_CARD_POP_MS = 340;
+const PATH_COLUMN_REVEAL_GAP_MS = 107;
+const PATH_COLUMN_REVEAL_TAIL_MS = 80;
 
 let directorRun = 0;
+let pathColumnRevealToken = 0;
 
 export function waitFrames(frameCount = 1) {
   return new Promise((resolve) => {
@@ -248,27 +253,71 @@ async function act1Title(board, runId) {
   await delay(320);
 }
 
-async function act2PathMap(deps, board, runId) {
+/** Hide path cards before column-by-column reveal (volume switch or intro act 2). */
+export function preparePathMapColumnReveal(gridEl) {
+  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+    wrap.classList.remove('is-pop-visible');
+    setHiddenCard(wrap);
+  });
+}
+
+/** Restore path cards and cords after a standalone column reveal (e.g. volume switch). */
+export function finalizePathMapColumnReveal(board, gridEl) {
+  board?.classList.remove('is-path-pop-active');
+  gridEl?.querySelectorAll('.intro-module-wrap').forEach((wrap) => {
+    wrap.classList.add('is-revealed', 'is-pop-visible');
+    commitFinalStyles(wrap);
+  });
+  board?.querySelectorAll('.intro-cord').forEach((cord) => {
+    cord.style.removeProperty('opacity');
+    cord.style.removeProperty('pointer-events');
+    cord.classList.add('is-intro-revealed');
+    cord.classList.remove('is-intro-line-growing', 'is-tube-flowing');
+  });
+}
+
+export function cancelPathMapColumnReveal() {
+  pathColumnRevealToken += 1;
+  return pathColumnRevealToken;
+}
+
+/**
+ * Intro act 2 / volume switch — columns of cards, then tubes to the next column.
+ * @param {object} [options]
+ * @param {number} [options.revealToken] — invalidate via cancelPathMapColumnReveal()
+ * @param {() => boolean} [options.shouldContinue] — extra guard (intro director run id)
+ * @param {boolean} [options.includePathPopActive=true] — path-pop-active + modules-visible (intro only)
+ */
+export async function playPathMapColumnReveal(deps, board, options = {}) {
+  const { revealToken, shouldContinue, includePathPopActive = true } = options;
   const { gridEl, getRuntimeModules, corporatePathColumns, corporateModuleIdsInColumn, corporateIntroCordKeysFromColumn } =
     deps;
 
-  deps.applyCorporateModuleGridLayout();
-  if (runId !== directorRun) return;
+  const ok = () => {
+    if (shouldContinue && !shouldContinue()) return false;
+    if (revealToken != null && revealToken !== pathColumnRevealToken) return false;
+    return true;
+  };
 
-  board.classList.add('is-path-pop-active');
-  deps.viewport?.classList.add('is-modules-visible');
+  deps.applyCorporateModuleGridLayout();
+  if (!ok()) return;
+
+  if (includePathPopActive) {
+    board.classList.add('is-path-pop-active');
+    deps.viewport?.classList.add('is-modules-visible');
+  }
 
   deps.allowCordMeasure(true);
   await deps.measureIntroCordsAsync();
   deps.allowCordMeasure(false);
-  if (runId !== directorRun) return;
+  if (!ok()) return;
 
   const modules = getRuntimeModules();
   const columns = corporatePathColumns(modules);
   const revealedCordKeys = new Set();
 
   for (const col of columns) {
-    if (runId !== directorRun) return;
+    if (!ok()) return;
 
     const moduleIds = corporateModuleIdsInColumn(col, modules);
     const wraps = moduleIds
@@ -283,18 +332,18 @@ async function act2PathMap(deps, board, runId) {
             { opacity: 0, transform: 'none' },
             { opacity: 1, transform: 'none' }
           ],
-          340,
+          PATH_COLUMN_CARD_POP_MS,
           EASE_CARD_POP
         )
       )
     );
-    if (runId !== directorRun) return;
+    if (!ok()) return;
 
     const edgeKeys = corporateIntroCordKeysFromColumn(col, modules).filter((k) => !revealedCordKeys.has(k));
     if (!edgeKeys.length) continue;
 
-    await delay(80);
-    if (runId !== directorRun) return;
+    await delay(PATH_COLUMN_REVEAL_GAP_MS);
+    if (!ok()) return;
 
     const jobs = [];
     const growingHosts = [];
@@ -314,7 +363,7 @@ async function act2PathMap(deps, board, runId) {
     await Promise.all(
       jobs.map((job) =>
         animateTubeDraw(job, INTRO_CORD_GROW_MS, { ease: easeInOutCubic }).then(() => {
-          if (runId !== directorRun) return;
+          if (!ok()) return;
           const hosts = cordHostsForSegment(job.seg, deps.connectorsEl, job.seg.key);
           for (const host of hosts) {
             host.classList.add('is-intro-revealed');
@@ -324,14 +373,21 @@ async function act2PathMap(deps, board, runId) {
       )
     );
     markCordTubeHosts(growingHosts, { growing: false });
-    if (runId !== directorRun) return;
+    if (!ok()) return;
 
     for (const key of edgeKeys) {
       revealedCordKeys.add(key);
     }
 
-    await delay(60);
+    await delay(PATH_COLUMN_REVEAL_TAIL_MS);
   }
+}
+
+async function act2PathMap(deps, board, runId) {
+  await playPathMapColumnReveal(deps, board, {
+    shouldContinue: () => runId === directorRun,
+    includePathPopActive: true
+  });
 }
 
 async function act3SideColumn(board, runId, deps) {
@@ -484,4 +540,5 @@ export async function playIntro(deps) {
 export function cancelIntroDirector() {
   directorRun += 1;
   introIsPlaying = false;
+  cancelPathMapColumnReveal();
 }
